@@ -1,5 +1,7 @@
 # VC-SASR -- Variable-Channel Spatial ASR Benchmark
 
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hd1534/variable-channel-spatial-asr/blob/main/notebooks/reproduce.ipynb)
+
 **1~4개 동기 마이크를 하나의 가중치로 처리해, 전사와 세션 내 익명 화자 ID, 방위각·거리의
 확률 분포와 점 추정을 함께 출력하는 모델을 위한 벤치마크.** 채널 수가 런타임에 바뀌어도
 모델을 바꾸지 않는다는 것이 이 과제의 전제다.
