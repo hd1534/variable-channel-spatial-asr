@@ -1,0 +1,1136 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Variable-Channel Spatial ASR</title>
+<meta name="description" content="가변 마이크 입력을 지원하는 공간 음성인식 벤치마크. 1~4채널을 하나의 가중치로 처리해 전사와 방위·거리 분포를 함께 출력합니다.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+/* 상단 내비게이션 + 해시 라우팅 단일 문서. 8개 섹션 중 하나만 표시합니다. */
+:root{
+  color-scheme: light;
+  --bg: #FFFFFF;
+  --ink: #16202E;
+  --surf: #F7F9FC;
+  --surf2: #EEF2F8;
+  --line: #DCE3EC;
+  --brand: #1F3C6E;
+  --brand-sub: #A9BEDE;
+  --brand-2: #4A6FA5;
+  --brand-pale: #E9EEF8;
+  --flag: #96661A;
+  --rej: #9E2B3B;
+  --body: #3C4961;
+  --muted: #566274;
+  --faint: #9AA6B8;
+  --faint2: #7E8CA3;
+  --note-bg: #FBF6EC;
+  --note-line: #E5D3AE;
+  --brand-fill: #1F3C6E;
+  --brand-fill-h: #15294E;
+  --on-brand: #FFFFFF;
+  --hatch: rgba(86,98,116,0.2);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme: dark;
+    --bg: #111823;
+    --ink: #E8EDF4;
+    --surf: #19212E;
+    --surf2: #202B3B;
+    --line: #2F3B4E;
+    --brand: #92B5EA;
+    --brand-sub: #C9DCF7;
+    --brand-2: #5E82BC;
+    --brand-pale: #1C2838;
+    --flag: #D9A94F;
+    --rej: #E57887;
+    --body: #C3CDDC;
+    --muted: #9EACC0;
+    --faint: #8695AA;
+    --faint2: #8695AA;
+    --note-bg: #2A2317;
+    --note-line: #584927;
+    --brand-fill: #2E5496;
+    --brand-fill-h: #3D69B4;
+    --on-brand: #FFFFFF;
+    --hatch: rgba(158,172,192,0.3);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+    --bg: #111823;
+    --ink: #E8EDF4;
+    --surf: #19212E;
+    --surf2: #202B3B;
+    --line: #2F3B4E;
+    --brand: #92B5EA;
+    --brand-sub: #C9DCF7;
+    --brand-2: #5E82BC;
+    --brand-pale: #1C2838;
+    --flag: #D9A94F;
+    --rej: #E57887;
+    --body: #C3CDDC;
+    --muted: #9EACC0;
+    --faint: #8695AA;
+    --faint2: #8695AA;
+    --note-bg: #2A2317;
+    --note-line: #584927;
+    --brand-fill: #2E5496;
+    --brand-fill-h: #3D69B4;
+    --on-brand: #FFFFFF;
+    --hatch: rgba(158,172,192,0.3);
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:'Source Sans 3','Apple SD Gothic Neo',system-ui,sans-serif;font-size:15px;line-height:1.62;-webkit-font-smoothing:antialiased}
+img{max-width:100%}
+[hidden]{display:none!important}
+a{color:var(--brand);text-decoration:none}
+a:hover{text-decoration:underline}
+h1,h2,h3{font-family:'Source Serif 4',Georgia,serif;font-weight:600;letter-spacing:-0.012em;margin:0;text-wrap:balance}
+p{margin:0 0 12px;max-width:66ch}
+.m{font-family:'JetBrains Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.wrap{max-width:1080px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.sm{font-size:13.5px}.xs{font-size:12.5px}.muted{color:var(--muted)}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{border-bottom:1px solid var(--line);padding:9px 11px;text-align:left;vertical-align:top}
+th{font-size:11px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;color:var(--muted);background:var(--surf2)}
+.stick-h{position:sticky;left:0;background:var(--surf2);border-right:1px solid var(--line)}
+.stick-c{position:sticky;left:0;background:var(--bg);border-right:1px solid var(--line)}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:11px;letter-spacing:0.14em;color:var(--brand);margin:0 0 12px}
+.lede{color:var(--body);margin:16px 0 0;max-width:60ch}
+.note{background:var(--note-bg);border:1px solid var(--note-line);padding:13px 15px;font-size:13.5px}
+.pend{background-image:repeating-linear-gradient(45deg,transparent 0 3px,var(--hatch) 3px 4px)}
+.na{font-family:'JetBrains Mono',monospace;color:var(--flag);text-align:right}
+
+/* --- shell: one navigation, one footer, hash-routed sections --- */
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);background:var(--bg);z-index:12}
+.topbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:10;border-bottom:1px solid var(--line);background:var(--bg)}
+.topbar-in{display:flex;align-items:center;gap:14px;padding-block:11px;flex-wrap:wrap}
+.wm{display:flex;align-items:center;gap:9px;font-family:'Source Serif 4',Georgia,serif;font-weight:600;font-size:15px;white-space:nowrap;color:var(--ink)}
+.wm:hover{text-decoration:none}
+.nl{display:flex;gap:2px;margin-left:auto;flex-wrap:wrap;min-width:0}
+.nl a{font-size:12.5px;font-weight:600;color:var(--muted);padding:5px 9px;display:flex;gap:5px;align-items:baseline;white-space:nowrap;border-radius:2px}
+.nl a .n{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--faint)}
+.nl a:hover{background:var(--surf2);color:var(--brand);text-decoration:none}
+.nl a[aria-current="page"]{background:var(--brand-fill);color:var(--on-brand)}
+.nl a[aria-current="page"] .n{color:var(--brand-sub)}
+.tt{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:0.08em;color:var(--muted);background:none;border:1px solid var(--line);padding:6px 9px;cursor:pointer;white-space:nowrap}
+.tt:hover{color:var(--brand);border-color:var(--brand)}
+.pgfoot{border-top:1px solid var(--line);padding-block:20px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.pgfoot a{font-weight:600;font-size:14px;display:flex;gap:8px;align-items:baseline}
+.pgfoot a .n{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--faint)}
+.sitefoot{border-top:1px solid var(--line);background:var(--surf);margin-top:8px}
+.sitefoot .wrap{padding-block:20px;display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between}
+a:focus-visible,button:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+@media(max-width:860px){
+  .nl{order:3;width:100%;margin-left:0;overflow-x:auto;padding-bottom:2px}
+  .nl a{font-size:12px}
+  .tt{margin-left:auto}
+}
+
+/* --- 페이지별 규칙 (섹션 id로 한정) --- */
+#overview .btn{display:inline-flex;align-items:center;gap:7px;font-weight:600;font-size:13.5px;padding:7px 14px;border:1px solid var(--brand-fill);background:var(--brand-fill);color:var(--on-brand);white-space:nowrap}
+#overview .ph h1{font-size:40px;line-height:1.14}
+#overview .ph .ko{font-size:16px;color:var(--muted);margin:10px 0 0}
+#overview .lede{font-size:17.5px;color:var(--body);margin:18px 0 0;max-width:60ch}
+#overview .sec{padding-block:32px}
+#overview .g3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+#overview .card{border:1px solid var(--line);padding:20px}
+#overview .card .lab{font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:0.1em;color:var(--muted);margin:0 0 9px}
+#overview .card h3{font-size:17px;margin:0 0 8px}
+#overview .card p{margin:0;font-size:13.5px;color:var(--muted)}
+#overview .facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line)}
+#overview .facts div{background:var(--bg);padding:13px 15px}
+#overview .facts b{display:block;font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:500;line-height:1.2}
+#overview .facts span{display:block;font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:0.07em;color:var(--muted);margin-top:4px}
+#overview .next{border-top:1px solid var(--line);padding-block:20px;display:flex;justify-content:flex-end}
+@media(max-width:900px){#overview .nl{display:none}
+#overview .g3{grid-template-columns:minmax(0,1fr)}
+#overview .facts{grid-template-columns:repeat(2,minmax(0,1fr))}
+#overview .ph h1{font-size:28px}
+}
+#task .btn{display:inline-flex;align-items:center;gap:7px;font-weight:600;font-size:13.5px;padding:7px 14px;border:1px solid var(--brand-fill);background:var(--brand-fill);color:var(--on-brand);white-space:nowrap}
+#task .ph h1{font-size:38px;line-height:1.16}
+#task .lede{font-size:17.5px;color:var(--body);margin:16px 0 0;max-width:60ch}
+#task .sec{padding-block:30px}
+#task .sec h2{font-size:21px;margin:0 0 14px}
+#task .g2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+#task .card{border:1px solid var(--line);padding:20px}
+#task .card .lab{font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:0.1em;color:var(--muted);margin:0 0 9px}
+#task .card h3{font-size:17px;margin:0 0 8px}
+#task .card p{margin:0;font-size:13.5px;color:var(--muted)}
+#task .flow{display:grid;grid-template-columns:1fr 28px 1fr 28px 1fr;align-items:stretch}
+#task .flow .ar{display:flex;align-items:center;justify-content:center;color:var(--faint);font-family:'JetBrains Mono',monospace;font-size:14px}
+#task .flow .st{border:1px solid var(--line);padding:18px;background:var(--surf)}
+#task .flow .st .lab{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.1em;color:var(--brand);margin:0 0 8px}
+#task .flow .st h3{font-size:15px;margin:0 0 7px}
+#task .flow .st p{margin:0;font-size:13px;color:var(--muted)}
+#task table{border-collapse:collapse;width:100%;font-size:13.5px}
+#task th,#task td{border-bottom:1px solid var(--line);padding:9px 11px;text-align:left;vertical-align:top}
+#task th{font-size:11px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;color:var(--muted);background:var(--surf2)}
+#task td.n{font-family:'JetBrains Mono',monospace;text-align:right}
+#task .scroll{overflow-x:auto;border:1px solid var(--line)}
+#task .next{border-top:1px solid var(--line);padding-block:20px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+@media(max-width:900px){#task .nl{display:none}
+#task .g2{grid-template-columns:minmax(0,1fr)}
+#task .ph h1{font-size:28px}
+#task .flow{grid-template-columns:minmax(0,1fr);gap:8px}
+#task .flow .ar{transform:rotate(90deg)}
+}
+#data .btn{display:inline-flex;align-items:center;gap:7px;font-weight:600;font-size:13.5px;padding:7px 14px;border:1px solid var(--brand-fill);background:var(--brand-fill);color:var(--on-brand);white-space:nowrap}
+#data .btn-g{background:var(--bg);color:var(--brand)}
+#data .btn-g:hover{background:var(--brand-pale);color:var(--brand)}
+#data .ph h1{font-size:38px;line-height:1.16}
+#data .lede{font-size:17.5px;color:var(--body);margin:16px 0 0;max-width:60ch}
+#data .sec{padding-block:30px}
+#data .sec h2{font-size:21px;margin:0 0 14px}
+#data .g2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+#data .g2a{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:24px;align-items:start}
+#data .card{border:1px solid var(--line);padding:20px}
+#data .card .lab{font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:0.1em;color:var(--muted);margin:0 0 9px}
+#data .card h3{font-size:17px;margin:0 0 8px}
+#data .card p{margin:0;font-size:13.5px;color:var(--muted)}
+#data .card.on{border-color:var(--brand-fill)}
+#data .card.on .lab{color:var(--brand)}
+#data table{border-collapse:collapse;width:100%;font-size:13.5px}
+#data th,#data td{border-bottom:1px solid var(--line);padding:9px 11px;text-align:left;vertical-align:top}
+#data th{font-size:11px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;color:var(--muted);background:var(--surf2)}
+#data td.n{font-family:'JetBrains Mono',monospace;text-align:right}
+#data .scroll{overflow-x:auto;border:1px solid var(--line)}
+#data ul.f{list-style:none;padding:0;margin:0;display:grid;gap:9px;font-size:13.5px}
+#data ul.f li{display:grid;grid-template-columns:14px minmax(0,1fr);gap:9px}
+#data ul.f li::before{content:'';width:5px;height:5px;background:var(--brand-fill);margin-top:8px}
+#data .next{border-top:1px solid var(--line);padding-block:20px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+@media(max-width:900px){#data .nl{display:none}
+#data .g2,#data .g2a{grid-template-columns:minmax(0,1fr)}
+#data .ph h1{font-size:28px}
+}
+#evaluation .btn{display:inline-flex;align-items:center;gap:7px;font-weight:600;font-size:13.5px;padding:7px 14px;border:1px solid var(--brand-fill);background:var(--brand-fill);color:var(--on-brand);white-space:nowrap}
+#evaluation .btn-g{background:var(--bg);color:var(--brand)}
+#evaluation .btn-g:hover{background:var(--brand-pale);color:var(--brand)}
+#evaluation .ph h1{font-size:38px;line-height:1.16}
+#evaluation .lede{font-size:17.5px;color:var(--body);margin:16px 0 0;max-width:60ch}
+#evaluation .sec{padding-block:30px}
+#evaluation .sec h2{font-size:21px;margin:0 0 14px}
+#evaluation .g2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+#evaluation table{border-collapse:collapse;width:100%;font-size:13.5px}
+#evaluation th,#evaluation td{border-bottom:1px solid var(--line);padding:9px 11px;text-align:left;vertical-align:top}
+#evaluation th{font-size:11px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;color:var(--muted);background:var(--surf2)}
+#evaluation td.n{font-family:'JetBrains Mono',monospace;text-align:right}
+#evaluation td .met{font-family:'JetBrains Mono',monospace;font-weight:500}
+#evaluation td .role{display:block;font-size:11px;color:var(--faint);margin-top:2px}
+#evaluation td .rid{font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--brand)}
+#evaluation .scroll{overflow-x:auto;border:1px solid var(--line)}
+#evaluation .next{border-top:1px solid var(--line);padding-block:20px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+@media(max-width:900px){#evaluation .nl{display:none}
+#evaluation .g2{grid-template-columns:minmax(0,1fr)}
+#evaluation .ph h1{font-size:28px}
+}
+#leaderboard .btn{display:inline-flex;align-items:center;gap:7px;font-weight:600;font-size:13.5px;padding:7px 14px;border:1px solid var(--brand-fill);background:var(--brand-fill);color:var(--on-brand);white-space:nowrap}
+#leaderboard .btn-g{border-color:var(--line);background:var(--surf);color:var(--muted)}
+#leaderboard .ph h1{font-size:38px;line-height:1.16}
+#leaderboard .lede{font-size:17.5px;color:var(--body);margin:16px 0 0;max-width:60ch}
+#leaderboard .sec{padding-block:26px}
+#leaderboard .sec h2{font-size:21px;margin:0 0 14px}
+#leaderboard .flow{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+#leaderboard .step{border:1px solid var(--line);background:var(--surf);padding:15px 16px}
+#leaderboard .step .sn{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:10px;letter-spacing:0.12em;color:var(--brand);display:block;margin-bottom:7px}
+#leaderboard .step h3{font-size:15.5px;margin:0 0 7px}
+#leaderboard .step p{font-size:13.5px;color:var(--body);margin:0;max-width:none}
+#leaderboard .step .f{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--muted);display:block;margin-top:9px;padding-top:9px;border-top:1px solid var(--line)}
+#leaderboard .tabs{display:flex;gap:2px;flex-wrap:wrap;border-bottom:1px solid var(--line)}
+#leaderboard .tab{font-weight:600;font-size:13.5px;padding:9px 16px;border:1px solid var(--line);border-bottom:none;background:var(--surf);color:var(--muted);cursor:pointer;font-family:inherit}
+#leaderboard .tab[aria-selected="true"]{background:var(--bg);color:var(--brand);margin-bottom:-1px;border-bottom:1px solid var(--bg)}
+#leaderboard .pane{border:1px solid var(--line);border-top:none;padding:16px}
+#leaderboard .ctl{display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin-bottom:14px}
+#leaderboard .ctl .cl{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.09em;color:var(--faint);text-transform:uppercase}
+#leaderboard .seg{font-family:'JetBrains Mono',monospace;font-size:12px;padding:5px 11px;border:1px solid var(--line);background:var(--bg);color:var(--muted);cursor:pointer}
+#leaderboard .seg[aria-pressed="true"]{background:var(--brand-fill);border-color:var(--brand-fill);color:var(--on-brand)}
+#leaderboard table{border-collapse:collapse;width:100%;font-size:13.5px}
+#leaderboard th,#leaderboard td{border-bottom:1px solid var(--line);padding:9px 11px;text-align:left;vertical-align:top}
+#leaderboard th{font-size:11px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;color:var(--muted);background:var(--surf2)}
+#leaderboard .pend{background-image:repeating-linear-gradient(45deg,transparent 0 3px,var(--hatch) 3px 4px)}
+#leaderboard .na{font-family:'JetBrains Mono',monospace;color:var(--flag);text-align:right}
+#leaderboard .num{font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;text-align:right}
+#leaderboard .best{font-weight:700;color:var(--brand)}
+#leaderboard .flr{color:var(--flag)}
+#leaderboard .mtab{margin-top:18px}
+#leaderboard .mtab caption{text-align:left;font-size:13px;color:var(--muted);padding-bottom:8px}
+#leaderboard .scroll{overflow-x:auto;border:1px solid var(--line)}
+#leaderboard .leg{display:flex;flex-wrap:wrap;gap:18px;align-items:center;font-size:13px;margin-bottom:14px}
+#leaderboard .leg span.sw{width:30px;height:17px;border:1px solid var(--line);display:inline-block}
+#leaderboard .sys{display:block}
+#leaderboard .sys b{font-weight:600}
+#leaderboard .sys span{display:block;font-size:11.5px;color:var(--faint)}
+#leaderboard .grp td{background:var(--surf2);border-top:1px dashed var(--faint)}
+#leaderboard .grp span{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.09em;text-transform:uppercase;color:var(--muted)}
+#leaderboard .empty{padding:26px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--faint)}
+#leaderboard .next{border-top:1px solid var(--line);padding-block:20px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+@media(max-width:900px){#leaderboard .nl{display:none}
+#leaderboard .ph h1{font-size:28px}
+#leaderboard .flow{grid-template-columns:1fr}
+}
+#baseline .btn{display:inline-flex;align-items:center;gap:7px;font-weight:600;font-size:13.5px;padding:7px 14px;border:1px solid var(--brand-fill);background:var(--brand-fill);color:var(--on-brand);white-space:nowrap}
+#baseline .ph h1{font-size:38px;line-height:1.16}
+#baseline .lede{font-size:17.5px;color:var(--body);margin:16px 0 0;max-width:60ch}
+#baseline .sec{padding-block:30px}
+#baseline .sec h2{font-size:21px;margin:0 0 14px}
+#baseline .g3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+#baseline .card{border:1px solid var(--line);padding:20px}
+#baseline .card .lab{font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:0.1em;color:var(--muted);margin:0 0 9px}
+#baseline .card h3{font-size:16px;margin:0 0 8px}
+#baseline .card p{margin:0;font-size:13.5px;color:var(--muted)}
+#baseline .card .tag{display:inline-block;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.07em;padding:2px 7px;border:1px solid var(--line);color:var(--muted);margin-top:12px}
+#baseline .card.on{border-color:var(--brand-fill)}
+#baseline .card.on .lab{color:var(--brand)}
+#baseline .card.on .tag{border-color:var(--flag);color:var(--flag)}
+#baseline table{border-collapse:collapse;width:100%;font-size:13.5px}
+#baseline th,#baseline td{border-bottom:1px solid var(--line);padding:9px 11px;text-align:left;vertical-align:top}
+#baseline th{font-size:11px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;color:var(--muted);background:var(--surf2)}
+#baseline .fix{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.06em;color:var(--brand)}
+#baseline .var{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.06em;color:var(--flag)}
+#baseline .scroll{overflow-x:auto;border:1px solid var(--line)}
+#baseline pre{font-family:'JetBrains Mono',monospace;font-size:12.5px;line-height:1.72;background:var(--ink);color:var(--line);padding:16px;margin:0;overflow-x:auto;white-space:pre}
+#baseline pre .c{color:var(--faint2)}
+#baseline .steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-bottom:16px}
+#baseline .step{display:grid;grid-template-columns:30px minmax(0,1fr);gap:12px;align-items:start}
+#baseline .step .no{width:26px;height:26px;border:1px solid var(--brand-fill);color:var(--brand);font-family:'JetBrains Mono',monospace;font-size:12px;display:flex;align-items:center;justify-content:center}
+#baseline .step h3{font-size:14.5px;margin:0 0 4px}
+#baseline .step p{margin:0;font-size:13px;color:var(--muted)}
+#baseline .next{border-top:1px solid var(--line);padding-block:20px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+@media(max-width:900px){#baseline .nl{display:none}
+#baseline .g3,#baseline .steps{grid-template-columns:minmax(0,1fr)}
+#baseline .ph h1{font-size:28px}
+}
+#limits .btn{display:inline-flex;align-items:center;gap:7px;font-weight:600;font-size:13.5px;padding:7px 14px;border:1px solid var(--brand-fill);background:var(--brand-fill);color:var(--on-brand);white-space:nowrap}
+#limits .ph h1{font-size:38px;line-height:1.16}
+#limits .lede{font-size:17.5px;color:var(--body);margin:16px 0 0;max-width:60ch}
+#limits .sec{padding-block:30px}
+#limits .sec h2{font-size:21px;margin:0 0 14px}
+#limits .g2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+#limits .g3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+#limits .card{border:1px solid var(--line);padding:20px}
+#limits .card h3{font-size:16.5px;margin:0 0 8px}
+#limits .card p{margin:0;font-size:13.5px;color:var(--muted)}
+#limits .plot{border:1px solid var(--line);padding:11px;position:relative;background:var(--surf)}
+#limits .plab{position:absolute;top:10px;right:11px;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.08em;color:var(--faint)}
+#limits .bins{display:flex;align-items:flex-end;gap:1px;height:72px;border-bottom:1px solid var(--ink);position:relative}
+#limits .bins i{flex:1 1 0;min-width:0;height:2%;background:var(--faint);display:block}
+#limits .bins i.u{height:7%}
+#limits .unif{position:absolute;left:0;right:0;bottom:7%;border-top:1px dashed var(--flag)}
+#limits .ax{display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--faint);margin-top:4px}
+#limits figure{margin:0}
+#limits figcaption{font-size:12.5px;color:var(--muted);margin-top:8px}
+#limits .next{border-top:1px solid var(--line);padding-block:20px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+@media(max-width:900px){#limits .nl{display:none}
+#limits .g2,#limits .g3{grid-template-columns:minmax(0,1fr)}
+#limits .ph h1{font-size:28px}
+}
+#resources .btn{display:inline-flex;align-items:center;gap:7px;font-weight:600;font-size:13.5px;padding:8px 15px;border:1px solid var(--brand-fill);background:var(--brand-fill);color:var(--on-brand);white-space:nowrap}
+#resources .btn-g{background:var(--bg);color:var(--brand)}
+#resources .btn-g:hover{background:var(--brand-pale);color:var(--brand)}
+#resources .ph h1{font-size:38px;line-height:1.16}
+#resources .lede{font-size:17.5px;color:var(--body);margin:16px 0 0;max-width:60ch}
+#resources .sec{padding-block:30px}
+#resources .sec h2{font-size:21px;margin:0 0 14px}
+#resources .g2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+#resources .card{border:1px solid var(--line);padding:20px}
+#resources .card h3{font-size:16.5px;margin:0 0 8px}
+#resources .card p{margin:0;font-size:13.5px;color:var(--muted)}
+#resources table{border-collapse:collapse;width:100%;font-size:13.5px}
+#resources th,#resources td{border-bottom:1px solid var(--line);padding:9px 11px;text-align:left;vertical-align:top}
+#resources th{font-size:11px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;color:var(--muted);background:var(--surf2)}
+#resources .scroll{overflow-x:auto;border:1px solid var(--line)}
+#resources .tbc{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.06em;padding:1px 6px;border:1px solid var(--note-line);color:var(--flag);white-space:nowrap}
+#resources ol.ref{margin:0;padding-left:22px;font-size:13.5px;display:grid;gap:8px}
+#resources ol.ref li{color:var(--body)}
+#resources ol.ref i{font-style:normal;color:var(--faint)}
+#resources .next{border-top:1px solid var(--line);padding-block:20px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+@media(max-width:900px){#resources .nl{display:none}
+#resources .g2{grid-template-columns:minmax(0,1fr)}
+#resources .ph h1{font-size:28px}
+}
+
+</style>
+</head>
+<body>
+
+<header class="topbar"><div class="wrap topbar-in">
+  <a class="wm" href="#/overview">
+    <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8.6" style="fill:none;stroke:var(--brand);stroke-width:1.3"></circle><circle cx="10" cy="10" r="1.8" style="fill:var(--brand)"></circle><line x1="10" y1="10" x2="16.5" y2="5.6" style="stroke:var(--brand);stroke-width:1.3"></line><line x1="10" y1="10" x2="16.5" y2="14.4" style="stroke:var(--flag);stroke-width:1.3"></line></svg>
+    VC-SASR
+  </a>
+  <nav class="nl" id="nav" aria-label="페이지">
+      <a href="#/overview" data-route="overview"><span class="n">01</span>Overview</a>
+      <a href="#/task" data-route="task"><span class="n">02</span>Task</a>
+      <a href="#/data" data-route="data"><span class="n">03</span>Data</a>
+      <a href="#/evaluation" data-route="evaluation"><span class="n">04</span>Evaluation</a>
+      <a href="#/leaderboard" data-route="leaderboard"><span class="n">05</span>Leaderboard</a>
+      <a href="#/baseline" data-route="baseline"><span class="n">06</span>Baseline</a>
+      <a href="#/limits" data-route="limits"><span class="n">07</span>Limits</a>
+      <a href="#/resources" data-route="resources"><span class="n">08</span>Resources</a>
+  </nav>
+  <button type="button" class="tt" id="tt" aria-label="밝기 전환">THEME</button>
+</div></header>
+
+<main id="main">
+<section id="overview" class="pg" hidden>
+<div class="wrap ph">
+    <p class="eyebrow">01 / OVERVIEW</p>
+    <h1>Variable-Channel Spatial ASR</h1>
+    <p class="ko">가변 마이크 입력을 지원하는 공간 음성인식</p>
+    <p class="lede">마이크 1개부터 4개까지, 하나의 가중치로 전사와 화자와 위치를 함께 추정합니다.</p>
+  </div>
+
+  <div class="wrap sec">
+    <p>마이크 수가 달라지면 보통 모델을 따로 만듭니다. 이 Challenge는 1~4채널을 단일 가중치로 처리합니다.</p>
+    <p>출력은 세 가지입니다. 발화 내용, 세션 내 익명 화자 ID, 화자의 방위각과 거리.</p>
+    <p>위치는 점 하나가 아니라 확률 분포로 제출합니다. 마이크가 적으면 방향을 알 수 없고, 그 사실까지 분포로 표현해야 합니다.</p>
+
+    <div class="g3" style="margin-top:26px">
+      <div class="card">
+        <p class="lab">VARIABLE CHANNEL</p>
+        <h3>Single Weight Set</h3>
+        <p>1~4채널을 하나의 가중치로 처리</p>
+      </div>
+      <div class="card">
+        <p class="lab">SPATIAL OUTPUT</p>
+        <h3>Distribution First</h3>
+        <p>방위각·거리 주변분포와 2D 점 추정</p>
+      </div>
+      <div class="card">
+        <p class="lab">REPRODUCIBILITY</p>
+        <h3>Fully Open Eval</h3>
+        <p>평가셋·정답·채점 코드 전체 공개</p>
+      </div>
+    </div>
+
+    <div class="facts" style="margin-top:26px">
+      <div><b>36</b><span>AZIMUTH BINS @10&deg;</span></div>
+      <div><b>0.25 s</b><span>EVALUATION GRID</span></div>
+      <div><b>M &le; 4</b><span>INPUT CHANNELS</span></div>
+      <div><b>&asymp;715 Hz</b><span>&lambda;/2 ALIASING LIMIT</span></div>
+    </div>
+
+    <div class="note" style="margin-top:26px">
+      <b>진행 상태.</b> 기획안 v1.7 기준입니다. 공개된 것은 평가 계약, 공식 평가기, eval-dev 864케이스, 학습이 필요 없는 통제 베이스라인 2종과 그 실측 결과입니다. Recipe 1 학습은 아직 실시하지 않았습니다.
+    </div>
+  </div>
+
+  <div class="wrap next">
+    <a href="#/task"><span class="n">02</span>Task Definition &rarr;</a>
+  </div>
+</section>
+<section id="task" class="pg" hidden>
+<div class="wrap ph">
+    <p class="eyebrow">02 / TASK</p>
+    <h1>Task Definition</h1>
+    <p class="lede">허용된 관측 범위의 다채널 오디오만 입력받아 전사와 화자와 위치를 동시에 출력합니다.</p>
+  </div>
+
+  <div class="wrap sec">
+    <div class="g2">
+      <div class="card">
+        <p class="lab">TRACK 1</p>
+        <h3>Single Stationary Speaker</h3>
+        <p>한 세션에 한 명. 화자 전환이 없어 cpWER과 적응 지연은 정의되지 않습니다.</p>
+      </div>
+      <div class="card">
+        <p class="lab">TRACK 2</p>
+        <h3>Two-Speaker Turn-Taking</h3>
+        <p>한 시점에 한 명만 발화. 침묵 구간 포함. 화자 순열은 케이스마다 하나로 고정합니다.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="wrap sec" style="padding-top:6px">
+    <div class="flow">
+      <div class="st">
+        <p class="lab">INPUT</p>
+        <h3>Multichannel Audio</h3>
+        <p>4채널 패딩 텐서, 활성 채널 마스크, 마이크 상대 좌표</p>
+      </div>
+      <div class="ar">&rarr;</div>
+      <div class="st">
+        <p class="lab">MODEL</p>
+        <h3>Single Weight Set</h3>
+        <p>채널 수와 채널 순서에 무관한 공유 가중치</p>
+      </div>
+      <div class="ar">&rarr;</div>
+      <div class="st">
+        <p class="lab">OUTPUT</p>
+        <h3>Transcript &middot; Speaker &middot; Position</h3>
+        <p>화자별 전사문, 익명 화자 ID, 방위각·거리 분포와 점 추정</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="wrap sec">
+    <h2>입력에 포함되지 않는 것</h2>
+    <div class="scroll">
+      <table>
+        <thead><tr><th style="width:38%">항목</th><th>처리</th></tr></thead>
+        <tbody>
+          <tr><td>정답 전사문</td><td>제공하지 않음</td></tr>
+          <tr><td>정답 화자 라벨</td><td>제공하지 않음</td></tr>
+          <tr><td>정답 좌표와 거리</td><td>제공하지 않음</td></tr>
+          <tr><td class="m">T_eval</td><td>정답 활성 발화 시점. 평가기 내부에서만 채점 필터로 사용</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note" style="margin-top:14px">
+      추론에는 세션 전체 균일 시간축 <span class="m">T_all</span>만 제공합니다. 간격은 <span class="m">0.25초</span>입니다. 정답 발화 구간을 입력으로 주면 모델이 VAD를 공짜로 얻습니다.
+    </div>
+  </div>
+
+  <div class="wrap sec">
+    <h2>관측 범위</h2>
+    <div class="scroll">
+      <table>
+        <thead><tr><th style="width:170px">Observation Scope</th><th style="width:130px">Lookahead</th><th>조건</th></tr></thead>
+        <tbody>
+          <tr><td class="m">Causal</td><td class="n">0 s</td><td>현재 시점 이후의 오디오를 참조하지 않음</td></tr>
+          <tr><td class="m">Windowed</td><td class="n">W s</td><td>최근 W초 창 안에서만 미래 참조. <b style="color:var(--flag)">W 미확정</b></td></tr>
+          <tr><td class="m">Full-Audio</td><td class="n">T_session</td><td>세션 전체를 오프라인 처리</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="sm muted" style="margin-top:12px">관측 범위가 다른 모델은 같은 표에서 비교하지 않습니다. Leaderboard는 세 그룹으로 분리합니다.</p>
+  </div>
+
+  <div class="wrap next">
+    <a href="#/overview">&larr; <span class="n">01</span>Overview</a>
+    <a href="#/data"><span class="n">03</span>Dataset &rarr;</a>
+  </div>
+</section>
+<section id="data" class="pg" hidden>
+<div class="wrap ph">
+    <p class="eyebrow">03 / DATA</p>
+    <h1>Dataset</h1>
+    <p class="lede">LibriSpeech 음성을 4채널 공간 음향으로 합성합니다. 평가셋은 정답까지 전부 공개합니다.</p>
+  </div>
+
+  <div class="wrap sec">
+    <div class="g2">
+      <div class="card on">
+        <p class="lab">REQUIRED</p>
+        <h3>eval-dev</h3>
+        <p>오디오, 입력 메타데이터, 정답 라벨, 파일 목록 전체 공개. 외부 서버 없이 로컬에서 같은 점수를 재현합니다.</p>
+        <p style="margin-top:12px"><a class="btn btn-g" href="#/resources">다운로드 &#8599;</a></p>
+      </div>
+      <div class="card">
+        <p class="lab">OPTIONAL</p>
+        <h3>eval-test</h3>
+        <p>오디오와 입력 메타데이터만 공개. 정답은 비공개 보관. 웹 Judge 운영 시에만 필요합니다.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="wrap sec">
+    <h2>마이크 배열</h2>
+    <div class="g2a">
+      <div class="card" style="padding:18px">
+        <svg viewBox="0 0 230 160" width="100%" style="max-width:280px;display:block;margin:0 auto" role="img" aria-label="반경 5에서 12센티미터 비대칭 평면 4채널 배열 평면도">
+          <circle cx="115" cy="78" r="64" style="fill:none;stroke:var(--line);stroke-width:1"></circle>
+          <circle cx="115" cy="78" r="31" style="fill:none;stroke:var(--surf2);stroke-width:1"></circle>
+          <line x1="37" y1="78" x2="193" y2="78" style="stroke:var(--surf2);stroke-width:1"></line>
+          <line x1="115" y1="10" x2="115" y2="146" style="stroke:var(--surf2);stroke-width:1"></line>
+          <circle cx="115" cy="78" r="2.4" style="fill:var(--ink)"></circle>
+          <circle cx="174" cy="78" r="5" style="fill:var(--brand)"></circle>
+          <circle cx="115" cy="35" r="5" style="fill:var(--brand)"></circle>
+          <circle cx="66" cy="103" r="5" style="fill:var(--brand)"></circle>
+          <circle cx="137" cy="126" r="5" style="fill:var(--brand)"></circle>
+          <text x="182" y="82" style="font:400 10px 'JetBrains Mono',monospace;fill:var(--muted)">ch0</text>
+          <text x="121" y="30" style="font:400 10px 'JetBrains Mono',monospace;fill:var(--muted)">ch1</text>
+          <text x="40" y="107" style="font:400 10px 'JetBrains Mono',monospace;fill:var(--muted)">ch2</text>
+          <text x="145" y="130" style="font:400 10px 'JetBrains Mono',monospace;fill:var(--muted)">ch3</text>
+          <text x="117" y="92" style="font:400 9px 'JetBrains Mono',monospace;fill:var(--muted)">(0,0)</text>
+        </svg>
+      </div>
+      <div>
+        <div class="scroll">
+          <table>
+            <tbody>
+              <tr><td style="width:54%">반경</td><td class="n">5 – 12 cm</td></tr>
+              <tr><td>마이크 쌍 최대 간격</td><td class="n">24 cm</td></tr>
+              <tr><td>&lambda;/2 에일리어싱 한계</td><td class="n" style="color:var(--flag)">&asymp; 715 Hz</td></tr>
+              <tr><td>평가 채널 부분집합</td><td class="n">6개 고정</td></tr>
+              <tr><td>마이크·음원 높이</td><td class="n">z = 1.5 m 동일</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="sm muted" style="margin-top:12px">채널을 빼더라도 원점 (0,0)과 좌표축은 유지합니다. 활성 마이크 중심으로 원점을 다시 잡으면 채널 수 변화와 좌표계 변화가 섞입니다.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="wrap sec">
+    <h2>누출 방지 규칙</h2>
+    <div class="g2">
+      <ul class="f">
+        <li><span>원본 발화 단위 분할 격리</span></li>
+        <li><span>화자와 원본 발화 ID 완전 분리</span></li>
+        <li><span>세션 공통 이득 무작위화, 채널 간 차이는 &plusmn;0.5 dB 유지</span></li>
+      </ul>
+      <ul class="f">
+        <li><span>거리와 RT&#8336;&#8328; 직교 2&times;2 구성</span></li>
+        <li><span>시작 시각 연속 오프셋, 채널 간 TDOA 보존</span></li>
+        <li><span>평가셋 방위각·거리 bin 균등 층화</span></li>
+      </ul>
+    </div>
+    <div class="note" style="margin-top:16px">
+      음량을 무작위화하면 소구경 배열의 거리 단서는 직접음 대 잔향음 비만 남습니다. 모델이 방의 잔향 시간을 거리로 착각하지 않는지 2&times;2 네 칸 모두에서 확인합니다.
+    </div>
+  </div>
+
+  <div class="wrap sec">
+    <h2>배포 규격</h2>
+    <div class="scroll">
+      <table>
+        <thead><tr><th style="width:32%">항목</th><th>값</th></tr></thead>
+        <tbody>
+          <tr><td>오디오 형식</td><td class="m">4ch · 16 kHz · int16 · 초당 128 KB</td></tr>
+          <tr><td>세션 길이</td><td class="m">20 s 고정</td></tr>
+          <tr><td>eval-dev 용량 상한</td><td class="m">500 MB</td></tr>
+          <tr><td>배포 위치</td><td>GitHub 저장소. 오디오 · 라벨 · manifest 한 곳</td></tr>
+          <tr><td>채점이 읽는 것</td><td class="m">ground_truth.jsonl · 7.4 MB</td></tr>
+          <tr><td>검증</td><td class="m">manifest.json · 파일별 SHA256</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="wrap next">
+    <a href="#/task">&larr; <span class="n">02</span>Task</a>
+    <a href="#/evaluation"><span class="n">04</span>Evaluation Setup &rarr;</a>
+  </div>
+</section>
+<section id="evaluation" class="pg" hidden>
+<div class="wrap ph">
+    <p class="eyebrow">04 / EVALUATION</p>
+    <h1>Evaluation Setup</h1>
+    <p class="lede">모든 시스템이 같은 평가셋과 같은 시간 격자, 같은 화자 매칭 규칙을 씁니다.</p>
+  </div>
+
+  <div class="wrap sec">
+    <p>방위각은 36개 bin, 거리는 8개 bin으로 제출합니다. 채점 대상은 0.25초 격자 위의 정답 활성 발화 시점입니다.</p>
+    <p>단위가 다른 WER과 각도와 거리를 합산한 종합 점수는 쓰지 않습니다.</p>
+
+    <div class="g2" style="margin-top:18px">
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Azimuth bins</th><th>값</th></tr></thead>
+          <tbody>
+            <tr><td>bin 수</td><td class="n">36</td></tr>
+            <tr><td>간격</td><td class="n">10&deg;</td></tr>
+            <tr><td>범위</td><td class="n">[&minus;180, 180)</td></tr>
+            <tr><td>bin 중심</td><td class="n">&minus;175 + 10i</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Distance bins</th><th>값</th></tr></thead>
+          <tbody>
+            <tr><td>bin 수</td><td class="n">8</td></tr>
+            <tr><td>간격</td><td class="n">로그</td></tr>
+            <tr><td>범위</td><td class="n">0.5 – 5.0 m</td></tr>
+            <tr><td>bin 중심</td><td class="n">기하 평균</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <p class="sm muted" style="margin-top:10px">거리 bin을 로그 간격으로 둔 이유는 소구경 배열의 거리 단서가 직접음 대 잔향음 비이고, 그 비가 거리에 반비례하기 때문입니다. 등비 구간이 구간별로 비슷한 비 차이를 담습니다.</p>
+  </div>
+
+  <div class="wrap sec">
+    <h2>Metrics</h2>
+    <div class="scroll">
+      <table>
+        <thead><tr><th style="width:26%">Metric</th><th style="width:40%">계산</th><th>비고</th></tr></thead>
+        <tbody>
+          <tr><td><span class="met">WER &darr;</span><span class="role">Primary · ASR</span></td><td>참조 단어 대비 편집 거리</td><td>화자별 최종 전사문만 채점</td></tr>
+          <tr><td><span class="met">cpWER &darr;</span><span class="role">ASR</span></td><td>최적 화자 순열 하나로 계산한 WER</td><td style="color:var(--flag)">Track 2 전용</td></tr>
+          <tr><td><span class="met">Spk Acc &uarr;</span><span class="role">Speaker</span></td><td>채점 시점의 화자 일치 비율</td><td>케이스 단일 순열 기준</td></tr>
+          <tr><td><span class="met">Azimuth MAE &darr;</span><span class="role">Primary · Spatial</span></td><td>원형 오차 min(|d|, 360&minus;|d|) 평균</td><td>단위 도</td></tr>
+          <tr><td><span class="met">ACC@10&deg; / @20&deg; &uarr;</span><span class="role">Spatial</span></td><td>오차가 기준 이내인 시점 비율</td><td>완화 평가는 NLL 대신 여기로</td></tr>
+          <tr><td><span class="met">Distance MAE &darr;</span><span class="role">Spatial</span></td><td>|r &minus; r&#770;| 평균</td><td>평가 범위 0.5 – 5.0 m</td></tr>
+          <tr><td><span class="met">2D Pos Error &darr;</span><span class="role">Spatial</span></td><td>수평면 유클리드 거리</td><td>점 예측 우선, 생략 시 MAP bin 중심</td></tr>
+          <tr><td><span class="met">Azimuth / Distance NLL &darr;</span><span class="role">Uncertainty</span></td><td>정답 bin 확률의 음의 로그</td><td style="color:var(--flag)">분포 미제출 시 N/A</td></tr>
+          <tr><td><span class="met">Coverage@90% &rarr; 90</span><span class="role">Uncertainty</span></td><td>HPD 집합에 정답 bin이 들어간 비율</td><td>확률 내림차순 누적, 비연속 허용</td></tr>
+          <tr><td><span class="met">Interval Width &darr;</span><span class="role">Uncertainty</span></td><td>HPD 집합의 bin 폭 합</td><td>단위 도 또는 미터</td></tr>
+          <tr><td><span class="met">RTF &darr;</span><span class="role">Efficiency</span></td><td>추론 시간 / 오디오 길이</td><td>재실행 측정과 자기보고 구분 표기</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="sm muted" style="margin-top:10px">&darr;는 낮을수록, &uarr;는 높을수록 좋은 지표입니다. 공간·화자 지표는 케이스 단위 평균, WER과 cpWER은 전체 단어 기준 누적입니다.</p>
+  </div>
+
+  <div class="wrap sec">
+    <h2>Scoring rules</h2>
+    <div class="scroll">
+      <table>
+        <thead><tr><th style="width:110px">Rule</th><th>내용</th></tr></thead>
+        <tbody>
+          <tr><td><span class="rid">R-DUP</span></td><td>같은 키가 두 번 나오면 임의 선택 없이 전량 거부</td></tr>
+          <tr><td><span class="rid">R-MISS</span></td><td>누락 시점에 최대 오차 대입. 방위각 180&deg;, 거리 5.0 m, 화자 오답, NLL은 클리핑 하한</td></tr>
+          <tr><td><span class="rid">R-PERM</span></td><td>케이스마다 화자 순열 하나. 동률은 cpWER 최소 &rarr; 화자 일치 시점 최대 &rarr; 사전순</td></tr>
+          <tr><td><span class="rid">R-NLL</span></td><td>평활화 없음. 정답 bin에 &epsilon; = 1e-12 클리핑만 적용</td></tr>
+          <tr><td><span class="rid">R-PT</span></td><td>명시적 점 예측 우선. 생략 시에만 MAP bin 중심, 동률은 최소 인덱스</td></tr>
+          <tr><td><span class="rid">R-TXT</span></td><td>화자별 최종 전사문만 채점. 스트리밍 중간 출력은 별도 로그</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note" style="margin-top:14px">
+      누락 페널티의 NLL은 균일 분포 값이 아니라 클리핑 하한값입니다. 균일 분포 값을 쓰면 자신 없는 시점을 비우는 쪽이 유리해집니다.
+    </div>
+    <p style="margin-top:18px;display:flex;gap:10px;flex-wrap:wrap">
+      <a class="btn btn-g" href="#/resources">Evaluation code &#8599;</a>
+      <a class="btn btn-g" href="#/resources">spec.py &#8599;</a>
+    </p>
+  </div>
+
+  <div class="wrap next">
+    <a href="#/data">&larr; <span class="n">03</span>Dataset</a>
+    <a href="#/leaderboard"><span class="n">05</span>Leaderboard &rarr;</a>
+  </div>
+</section>
+<section id="leaderboard" class="pg" hidden>
+<div class="wrap ph">
+    <p class="eyebrow">05 / RESULTS</p>
+    <h1>Leaderboard</h1>
+    <p class="lede">eval-dev 864케이스 기준 실측값입니다. 같은 채점기를 Colab에서 그대로 돌려 재현할 수 있습니다.</p>
+  </div>
+
+  <div class="wrap sec">
+    <h2>채점 경로</h2>
+    <div class="flow">
+      <div class="step">
+        <span class="sn">01 &middot; GITHUB</span>
+        <h3>데이터와 채점기</h3>
+        <p>eval-dev 정답 라벨과 공식 채점기가 한 저장소에 있습니다.</p>
+        <span class="f">ground_truth.jsonl &middot; 7.4 MB<br>evaluate.py + spec.py &middot; 0.12 MB</span>
+      </div>
+      <div class="step">
+        <span class="sn">02 &middot; 로컬 또는 COLAB</span>
+        <h3>채점</h3>
+        <p>predictions.jsonl 을 공식 채점기에 넣습니다. GPU도 설치도 필요 없습니다.</p>
+        <span class="f">evaluate.py &middot; 표준 라이브러리만</span>
+      </div>
+      <div class="step">
+        <span class="sn">03 &middot; 결과</span>
+        <h3>표 갱신</h3>
+        <p>아래 표는 공식 채점기로 잰 값. scores.json 커밋 시 반영.</p>
+        <span class="f">관측 범위별 분리 &middot; 종합 점수 없음</span>
+      </div>
+    </div>
+    <p style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
+      <a class="btn" href="https://colab.research.google.com/github/hd1534/variable-channel-spatial-asr/blob/main/notebooks/reproduce.ipynb">Colab 에서 재현 &#8599;</a>
+    </p>
+    <p class="xs muted">clone · SHA256 검증 · 테스트 147개 · 커밋된 숫자 재현까지 무료 CPU 런타임에서 돕니다.</p>
+  </div>
+
+  <div class="wrap sec" style="padding-top:0">
+    <div class="note">
+      <b>통제 베이스라인 2종 측정 완료.</b> eval-dev 864케이스, 채점 시점 25,956개, 결측 0. 제안 모델과 외부 대조군은 아직 비어 있습니다.
+    </div>
+  </div>
+
+  <div class="wrap sec" style="padding-top:0">
+    <div class="leg">
+      <span><span class="sw pend"></span> 미측정</span>
+      <span><span class="m" style="color:var(--flag)">N/A</span> 규칙상 정의되지 않음</span>
+      <span><span class="m" style="color:var(--flag)">주황</span> 이론적 바닥값<sup>3</sup></span>
+      <span class="muted" style="margin-left:auto">측정 완료 <b class="m">2</b> / 5 시스템</span>
+    </div>
+
+    <div class="tabs" role="tablist" aria-label="관측 범위">
+      <button type="button" class="tab" role="tab" aria-selected="true">Causal &middot; 0 s</button>
+      <button type="button" class="tab" role="tab" aria-selected="false">Windowed &middot; W s</button>
+      <button type="button" class="tab" role="tab" aria-selected="false">Full-Audio</button>
+    </div>
+
+    <div class="pane">
+      <div class="ctl">
+        <span class="cl">Track</span>
+        <button type="button" class="seg" aria-pressed="true">1</button>
+        <button type="button" class="seg" aria-pressed="false">2</button>
+        <span class="cl" style="margin-left:10px">Mask</span>
+        <button type="button" class="seg" aria-pressed="true">M=1</button>
+        <button type="button" class="seg" aria-pressed="false">M=2</button>
+        <button type="button" class="seg" aria-pressed="false">M=3</button>
+        <button type="button" class="seg" aria-pressed="false">M=4</button>
+        <span class="xs muted m" style="margin-left:auto">case_id = sess_001__m1010</span>
+      </div>
+
+      <div class="scroll" style="border:none">
+        <table style="min-width:860px">
+          <thead><tr>
+            <th class="stick-h" style="min-width:196px">System</th>
+            <th style="min-width:66px;text-align:right">WER &darr;</th>
+            <th style="min-width:72px;text-align:right">cpWER &darr;</th>
+            <th style="min-width:76px;text-align:right">Spk Acc &uarr;</th>
+            <th style="min-width:76px;text-align:right">Az MAE &darr;</th>
+            <th style="min-width:80px;text-align:right">Dist MAE &darr;</th>
+            <th style="min-width:74px;text-align:right">2D Err &darr;</th>
+            <th style="min-width:72px;text-align:right">Az NLL &darr;</th>
+            <th style="min-width:80px;text-align:right">RTF &darr;</th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td class="stick-c"><span class="sys"><b>Controlled Baseline 1</b><span>단일 채널 + Frozen ASR</span></span></td>
+              <td class="num">0.268</td><td class="na">N/A<sup>1</sup></td><td class="num">1.000</td><td class="num flr">90.21°</td><td class="num flr">1.619</td><td class="num">2.265</td><td class="num flr">3.584</td><td class="num">0.014</td>
+            </tr>
+            <tr>
+              <td class="stick-c"><span class="sys"><b>Controlled Baseline 2</b><span>SRP-PHAT + DS 빔포머</span></span></td>
+              <td class="num best">0.254</td><td class="na">N/A<sup>1</sup></td><td class="num">1.000</td><td class="num best">50.49°</td><td class="num flr">1.619</td><td class="num best">1.971</td><td class="num best">2.317</td><td class="num">0.021</td>
+            </tr>
+            <tr>
+              <td class="stick-c"><span class="sys"><b>Ours &middot; Chunk-Reset</b><span>TAC + 동일 GRU</span></span></td>
+              <td class="pend" aria-label="미측정"></td><td class="na">N/A<sup>1</sup></td><td class="pend" aria-label="미측정"></td><td class="pend" aria-label="미측정"></td><td class="pend" aria-label="미측정"></td><td class="pend" aria-label="미측정"></td><td class="pend" aria-label="미측정"></td><td class="pend" aria-label="미측정"></td>
+            </tr>
+            <tr>
+              <td class="stick-c"><span class="sys"><b>Ours &middot; Carry-Over</b><span>TAC + 동일 GRU</span></span></td>
+              <td class="pend" aria-label="미측정"></td><td class="na">N/A<sup>1</sup></td><td class="pend" aria-label="미측정"></td><td class="pend" aria-label="미측정"></td><td class="pend" aria-label="미측정"></td><td class="pend" aria-label="미측정"></td><td class="pend" aria-label="미측정"></td><td class="pend" aria-label="미측정"></td>
+            </tr>
+            <tr class="grp"><td colspan="9"><span>External reference &middot; 비통제 대조군</span></td></tr>
+            <tr>
+              <td class="stick-c"><span class="sys"><b>Qwen3-ASR-1.7B</b><span>단일 채널 · 공간 출력 없음</span></span></td>
+              <td class="pend" aria-label="미측정"></td><td class="na">N/A<sup>1</sup></td><td class="na">N/A<sup>2</sup></td><td class="na">N/A<sup>2</sup></td><td class="na">N/A<sup>2</sup></td><td class="na">N/A<sup>2</sup></td><td class="na">N/A<sup>2</sup></td><td class="pend" aria-label="미측정"></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xs muted" style="margin:12px 0 0">
+        <sup>1</sup> cpWER은 2인 조건에서만 정의됩니다. Track 1에서는 N/A.
+        <sup>2</sup> 해당 시스템은 공간 출력을 생성하지 않습니다.
+        <sup>3</sup> 바닥값입니다. Azimuth NLL 3.584 = ln 36 은 균일 분포의 값이고 MAE 90.21°는 우연 수준입니다. 단일 채널에 방향 정보가 없다는 뜻입니다. 거리 1.619 m 는 두 베이스라인 모두 거리를 추정하지 않아 같습니다.
+      </p>
+    </div>
+
+    <div class="scroll mtab">
+      <table>
+        <caption>Controlled Baseline 2 · 채널 수별 방위각 (같은 모델, 입력 채널만 다름)</caption>
+        <thead><tr><th style="width:16%">마이크 수</th><th style="text-align:right">Azimuth MAE &darr;</th><th style="text-align:right">Acc@10° &uarr;</th><th style="text-align:right">Azimuth NLL &darr;</th><th>해석</th></tr></thead>
+        <tbody>
+          <tr><td class="m">M = 1</td><td class="num flr">85.45°</td><td class="num flr">0.126</td><td class="num flr">3.584</td><td>방향 정보 없음. 균일 분포</td></tr>
+          <tr><td class="m">M = 2</td><td class="num">55.84°</td><td class="num">0.367</td><td class="num">2.107</td><td>앞뒤 모호. 정답이 양봉이라 점 추정이 불리</td></tr>
+          <tr><td class="m">M = 3</td><td class="num best">7.94°</td><td class="num best">0.903</td><td class="num">1.381</td><td>비공선 세 번째 마이크가 모호성을 깸</td></tr>
+          <tr><td class="m">M = 4</td><td class="num best">6.49°</td><td class="num best">0.918</td><td class="num best">1.142</td><td>쌍 6개로 잡음 평균화</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="sm muted" style="margin-top:12px">M=2에서 M=3 사이가 이 과제의 핵심 구간입니다. 마이크 2개는 두 마이크를 잇는 축 양쪽의 시간차가 같아 앞뒤를 구분하지 못합니다. NLL은 이미 2.107로 균일(3.584)보다 크게 낮은데 MAE만 55.84°로 높은 것이 그 증거입니다. 분포로 제출받는 이유입니다.</p>
+
+    <p class="sm muted" style="margin-top:16px">관측 범위가 다른 모델은 표를 분리합니다. 단위가 다른 지표를 합산한 종합 점수는 제공하지 않습니다. RTF는 측정한 기기가 다르면 비교 대상이 아니므로 같은 환경에서 잰 값만 한 표에 둡니다.</p>
+  </div>
+
+  <div class="wrap next">
+    <a href="#/evaluation">&larr; <span class="n">04</span>Evaluation</a>
+    <a href="#/baseline"><span class="n">06</span>Baseline &amp; Method &rarr;</a>
+  </div>
+</section>
+<section id="baseline" class="pg" hidden>
+<div class="wrap ph">
+    <p class="eyebrow">06 / BASELINE</p>
+    <h1>Baseline &amp; Method</h1>
+    <p class="lede">베이스라인 두 개는 학습이 필요 없습니다. 제안 모델만 학습합니다.</p>
+  </div>
+
+  <div class="wrap sec">
+    <div class="g3">
+      <div class="card">
+        <p class="lab">BASELINE 1</p>
+        <h3>Single Channel + Frozen ASR</h3>
+        <p>활성 채널 중 최저 인덱스 하나만 사용. 방위각은 균일 분포, 거리는 에너지 기반 회귀.</p>
+        <span class="tag">학습 불필요</span>
+      </div>
+      <div class="card">
+        <p class="lab">BASELINE 2</p>
+        <h3>SRP-PHAT + Delay-and-Sum</h3>
+        <p>36개 방향의 조향 응답을 softmax로 분포화. 추정 방향으로 빔포밍한 단일 채널을 같은 Frozen ASR에 입력.</p>
+        <span class="tag">학습 불필요</span>
+      </div>
+      <div class="card on">
+        <p class="lab">PROPOSED</p>
+        <h3>TAC + GRU</h3>
+        <p>가변 채널 TAC로 공간 특징을 통합. 동일 GRU 구조에서 청크 간 상태 전달만 켜고 끕니다.</p>
+        <span class="tag">학습 필요 · 12/7 마감</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="wrap sec">
+    <h2>통제 변인</h2>
+    <p class="sm muted">세 시스템에서 ASR과 화자 인코더와 관측 범위를 같게 둡니다. 성능 차이의 원인을 프론트엔드와 시간 상태로 좁히기 위한 조건입니다.</p>
+    <div class="scroll">
+      <table>
+        <thead><tr><th style="width:30%">요소</th><th style="width:110px">상태</th><th>값</th></tr></thead>
+        <tbody>
+          <tr><td>ASR 백엔드</td><td><span class="fix">FIXED</span></td><td class="m">wav2vec2-base-960h (frozen)</td></tr>
+          <tr><td>화자 인코더</td><td><span class="fix">FIXED</span></td><td class="m">ECAPA-TDNN (frozen)</td></tr>
+          <tr><td>관측 범위</td><td><span class="fix">FIXED</span></td><td class="m">causal</td></tr>
+          <tr><td>청크 길이 / hop</td><td><span class="fix">FIXED</span></td><td class="m">1.0 s / 0.25 s</td></tr>
+          <tr><td>공간 프론트엔드</td><td><span class="var">VARIED</span></td><td>단일 채널 &middot; SRP-PHAT &middot; TAC</td></tr>
+          <tr><td>청크 간 상태 전달</td><td><span class="var">VARIED</span></td><td>Chunk-Reset &middot; Carry-Over</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note" style="margin-top:14px">
+      위치 출력 분기만 추가하고 ASR 입력과 추론 경로가 같다면 WER 향상을 주장하지 않습니다. 그 경우는 전사에 공간·화자 정보를 더한 멀티태스크 시스템으로 평가합니다.
+    </div>
+  </div>
+
+  <div class="wrap sec">
+    <h2>재현 절차</h2>
+    <div class="steps">
+      <div class="step"><span class="no">1</span><div><h3>평가셋 생성</h3><p>고정 시드로 eval-dev를 만듭니다.</p></div></div>
+      <div class="step"><span class="no">2</span><div><h3>베이스라인 추론</h3><p>predictions.jsonl을 출력합니다.</p></div></div>
+      <div class="step"><span class="no">3</span><div><h3>로컬 채점</h3><p>evaluate.py로 점수를 확인합니다.</p></div></div>
+    </div>
+    <pre><span class="c"># 1) 평가셋 생성 (고정 시드)</span>
+python make_eval_dev.py --out data/eval-dev --n-sessions 12 --seed 20261029
+
+<span class="c"># 2) 베이스라인 추론</span>
+python -m baselines.single_channel --eval-dir data/eval-dev \
+    --out predictions.jsonl --scope causal --track 1
+
+<span class="c"># 3) 로컬 채점</span>
+python evaluate.py --pred predictions.jsonl \
+    --gt data/eval-dev/ground_truth.jsonl --track 1</pre>
+    <p class="sm muted" style="margin-top:12px">evaluate.py는 표준 라이브러리와 numpy만 씁니다. 외부 서버나 유료 계정 없이 같은 점수가 나옵니다.</p>
+  </div>
+
+  <div class="wrap next">
+    <a href="#/leaderboard">&larr; <span class="n">05</span>Leaderboard</a>
+    <a href="#/limits"><span class="n">07</span>Scope &amp; Limits &rarr;</a>
+  </div>
+</section>
+<section id="limits" class="pg" hidden>
+<div class="wrap ph">
+    <p class="eyebrow">07 / LIMITS</p>
+    <h1>Scope &amp; Limits</h1>
+    <p class="lede">결과를 미리 단정하지 않습니다. 한계도 결과에 포함합니다.</p>
+  </div>
+
+  <div class="wrap sec">
+    <h2>채널 수와 모호성</h2>
+    <div class="g3">
+      <figure>
+        <div class="plot">
+          <span class="plab">도해 · 실측 아님</span>
+          <div class="bins"><div class="unif"></div><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i></div>
+          <div class="ax"><span>&minus;180&deg;</span><span>0&deg;</span><span>+180&deg;</span></div>
+        </div>
+        <figcaption><b class="m">M = 1</b> · 전 bin 1/36<br>방향 단서 없음. NLL = <span class="m">3.5835</span></figcaption>
+      </figure>
+      <figure>
+        <div class="plot">
+          <span class="plab">도해 · 실측 아님</span>
+          <div class="bins"><div class="unif"></div><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i style="height:64%;background:var(--brand-fill)"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i style="height:64%;background:var(--brand-fill)"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <div class="ax"><span>&minus;180&deg;</span><span style="color:var(--rej)">원형 평균 = 0&deg;</span><span>+180&deg;</span></div>
+        </div>
+        <figcaption><b class="m">M = 2</b> · bin 12·23에 각 0.45<br>두 로브의 평균은 빈 방향. NLL = <span class="m">0.7985</span></figcaption>
+      </figure>
+      <figure>
+        <div class="plot">
+          <span class="plab">도해 · 실측 아님</span>
+          <div class="bins"><div class="unif"></div><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i style="height:17%;background:var(--brand-2)"></i><i style="height:89%;background:var(--brand-fill)"></i><i style="height:17%;background:var(--brand-2)"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <div class="ax"><span>&minus;180&deg;</span><span>0&deg;</span><span>+180&deg;</span></div>
+        </div>
+        <figcaption><b class="m">M = 4</b> · bin 23에 0.62<br>단봉이 좁아짐. NLL = <span class="m">0.4780</span></figcaption>
+      </figure>
+    </div>
+    <p class="sm muted" style="margin-top:12px">세 패널은 공유 y축(p 최대 0.70)과 같은 정답 bin을 씁니다. 구성 규칙을 캡션에 적었으므로 표시된 NLL은 그 입력에 채점 공식을 적용한 계산값입니다. 성능 숫자가 아닙니다.</p>
+  </div>
+
+  <div class="wrap sec">
+    <div class="g2">
+      <div class="card">
+        <h3>마이크 1개로는 방향을 모릅니다</h3>
+        <p>무지향 마이크 하나에는 방향 단서가 없습니다. 균일 분포가 정직한 출력이고, ACC@10&deg;는 우연 수준이어야 맞습니다.</p>
+      </div>
+      <div class="card">
+        <h3>마이크 2개에는 대칭이 남습니다</h3>
+        <p>두 마이크를 잇는 축 양쪽의 시간차가 같습니다. 양봉 분포를 그대로 제출하고, 대표점은 평균이 아니라 MAP bin 중심을 씁니다.</p>
+      </div>
+      <div class="card">
+        <h3>거리는 잔향에서 옵니다</h3>
+        <p>음량을 무작위화하면 소구경 배열의 거리 단서는 직접음 대 잔향음 비만 남습니다. 방의 잔향 시간을 거리로 착각하는지 직교 2&times;2로 확인합니다.</p>
+      </div>
+      <div class="card">
+        <h3>관측이 길수록 좋다고 보지 않습니다</h3>
+        <p>상태를 길게 누적하면 화자 전환 직후 이전 위치에 머무는 관성이 생깁니다. 시간 누적만으로 기하학적 대칭도 사라지지 않습니다.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="wrap sec">
+    <h2>데이터와 기여의 범위</h2>
+    <div class="note">
+      eval-dev는 Image Source Method 시뮬레이션입니다. Unseen Room도 같은 시뮬레이터 안에 있어 일반화 검증으로는 약합니다. 실측 다채널 RIR 기반 분할을 별도 검증 조건으로 추가합니다.
+    </div>
+    <p style="margin-top:16px">새로운 위치 복원 원리를 제시하지 않습니다. 기여는 재현 가능한 과제 정의와 조건별 성능·한계 분석입니다.</p>
+    <p>중첩 발화는 이번 범위에서 제외했습니다. 중첩이 없는 조건에서 빔포밍의 WER 이득은 크지 않을 수 있고, 그 결과도 그대로 보고합니다.</p>
+  </div>
+
+  <div class="wrap next">
+    <a href="#/baseline">&larr; <span class="n">06</span>Baseline</a>
+    <a href="#/resources"><span class="n">08</span>Code &amp; References &rarr;</a>
+  </div>
+</section>
+<section id="resources" class="pg" hidden>
+<div class="wrap ph">
+    <p class="eyebrow">08 / RESOURCES</p>
+    <h1>Code &amp; References</h1>
+    <p class="lede">코드와 평가셋, 채점 코드를 한 저장소에 둡니다.</p>
+  </div>
+
+  <div class="wrap sec">
+    <div class="scroll">
+      <table>
+        <thead><tr><th style="width:24%">항목</th><th style="width:30%">경로</th><th>내용</th></tr></thead>
+        <tbody>
+          <tr><td><b>Baseline 코드</b></td><td class="m">baselines/</td><td>단일 채널 + Frozen ASR, SRP-PHAT + DS 빔포머</td></tr>
+          <tr><td><b>Dataset</b></td><td class="m">data/eval-dev/<br>make_eval_dev.py</td><td>오디오, 입력 메타데이터, 정답 라벨, manifest</td></tr>
+          <tr><td><b>Evaluation</b></td><td class="m">evaluate.py<br>spec.py</td><td>공식 채점 코드와 평가 계약 상수</td></tr>
+          <tr><td><b>Tests</b></td><td class="m">tests/</td><td>채널 순열 불변성, 마스킹 무결성, 인과성, 평가기 정확성</td></tr>
+          <tr><td><b>결정 기록</b></td><td class="m">SPEC_DECISIONS.md</td><td>기획안에 없던 값을 동결한 근거</td></tr>
+            <tr><td><b>재현 노트북</b></td><td class="m">notebooks/<br>reproduce.ipynb</td><td>clone · SHA256 검증 · 채점기 테스트 · 커밋된 숫자 재현까지 GPU 없이</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:18px;display:flex;gap:10px;flex-wrap:wrap">
+      <a class="btn" href="https://github.com/LSH-Ajou/Speech-Recognition-Challenge-2026">Challenge 저장소 &#8599;</a>
+      <a class="btn btn-g" href="https://colab.research.google.com/github/hd1534/variable-channel-spatial-asr/blob/main/notebooks/reproduce.ipynb"><span class="m" style="font-size:12px">Colab 에서 재현 &#8599;</span></a>
+      <a class="btn btn-g" href="https://github.com/hd1534/variable-channel-spatial-asr"><span class="m" style="font-size:12px">github.com/hd1534/variable-channel-spatial-asr &#8599;</span></a>
+    </p>
+
+  </div>
+
+  <div class="wrap sec">
+    <h2>제출</h2>
+    <div class="g2">
+      <div class="card">
+        <h3>제출 방식</h3>
+        <p>GitHub Pull Request. 작성한 HTML을 Challenge 저장소의 <span class="m">submission/</span> 디렉토리에 올립니다.</p>
+      </div>
+      <div class="card">
+        <h3>실행 환경</h3>
+        <p><span class="m">evaluate.py</span>는 표준 라이브러리와 numpy만 씁니다. numpy를 막아도 테스트 147개가 전부 통과합니다. 데이터 생성과 베이스라인은 <span class="m">requirements.txt</span>에 버전을 고정했습니다.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="wrap sec">
+    <h2>라이선스와 출처</h2>
+    <div class="scroll">
+      <table>
+        <thead><tr><th style="width:38%">자원</th><th style="width:150px">라이선스</th><th>조건</th></tr></thead>
+        <tbody>
+          <tr><td>LibriSpeech</td><td class="m">CC BY 4.0</td><td>파생 합성 오디오 재배포 시 출처 표기</td></tr>
+          <tr><td>pyroomacoustics</td><td class="m">MIT</td><td>&mdash;</td></tr>
+          <tr><td class="m">wav2vec2-base-960h</td><td><span class="tbc">확인 필요</span></td><td>체크포인트 카드 확인 후 기재</td></tr>
+          <tr><td class="m">ECAPA-TDNN (SpeechBrain)</td><td><span class="tbc">확인 필요</span></td><td>체크포인트 카드 확인 후 기재</td></tr>
+          <tr><td class="m">Silero VAD</td><td><span class="tbc">확인 필요</span></td><td>저장소 라이선스 확인 후 기재</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note" style="margin-top:14px">
+      <b>확인 필요</b> 표기는 아직 원문 라이선스를 대조하지 않은 항목입니다. 모두 추론에 쓰는 모델이고 가중치를 재배포하지는 않습니다. 재배포하는 것은 LibriSpeech 파생 오디오뿐이며, CC BY 4.0 출처 표기는 <span class="m">data/eval-dev/ATTRIBUTION.md</span>에 있습니다.
+    </div>
+  </div>
+
+  <div class="wrap sec">
+    <h2>References</h2>
+    <ol class="ref">
+      <li>Luo, Chen, Mesgarani, Yoshioka. <i>End-to-end Microphone Permutation and Number Invariant Multi-channel Speech Separation (TAC)</i>. ICASSP 2020.</li>
+      <li>Yoshioka et al. <i>VarArray: Array-Geometry-Agnostic Continuous Speech Separation</i>. ICASSP 2022.</li>
+      <li>Panayotov, Chen, Povey, Khudanpur. <i>LibriSpeech: An ASR Corpus Based on Public Domain Audio Books</i>. ICASSP 2015.</li>
+      <li>Scheibler, Bezzam, Dokmanić. <i>Pyroomacoustics: A Python Package for Audio Room Simulation and Array Processing Algorithms</i>. ICASSP 2018.</li>
+      <li>Baevski, Zhou, Mohamed, Auli. <i>wav2vec 2.0: A Framework for Self-Supervised Learning of Speech Representations</i>. NeurIPS 2020.</li>
+      <li>Desplanques, Thienpondt, Demuynck. <i>ECAPA-TDNN: Emphasized Channel Attention, Propagation and Aggregation in TDNN Based Speaker Verification</i>. Interspeech 2020.</li>
+      <li>LOCATA Challenge &mdash; 음원 위치 추정 벤치마크 <span class="tbc">서지 확인 필요</span></li>
+      <li>CHiME DASR &mdash; 다채널 원거리 음성인식 챌린지 <span class="tbc">서지 확인 필요</span></li>
+      <li>DCASE SELD / STARSS &mdash; 음향 이벤트 위치 추정 <span class="tbc">서지 확인 필요</span></li>
+      <li>BUT Speech@FIT Reverb Database &mdash; 실측 다채널 RIR <span class="tbc">서지 확인 필요</span></li>
+    </ol>
+    <p class="sm muted" style="margin-top:14px">7~10번은 이 과제와 겹치는 선행 벤치마크입니다. 차별점 서술을 위해 서지 정보를 먼저 확인한 뒤 본문에 반영합니다.</p>
+  </div>
+
+  <div class="wrap next">
+    <a href="#/limits">&larr; <span class="n">07</span>Limits</a>
+    <a href="#/overview"><span class="n">01</span>Overview &rarr;</a>
+  </div>
+</section>
+</main>
+
+<footer class="sitefoot"><div class="wrap">
+  <span class="xs muted">Variable-Channel Spatial ASR · 기획안 v1.7 · 전 지표 미측정</span>
+  <span class="xs muted m">황재현 · 202126887 · Ajou University 2026</span>
+</div></footer>
+
+<script>
+(function () {
+  var ROUTES = ['overview', 'task', 'data', 'evaluation', 'leaderboard', 'baseline', 'limits', 'resources'];
+  var SITE = 'Variable-Channel Spatial ASR';
+  var nav = document.getElementById('nav');
+  var links = nav.querySelectorAll('a[data-route]');
+
+  function routeFromHash() {
+    var h = (location.hash || '').replace(/^#\/?/, '');
+    return ROUTES.indexOf(h) >= 0 ? h : ROUTES[0];
+  }
+
+  function show(id) {
+    for (var i = 0; i < ROUTES.length; i++) {
+      document.getElementById(ROUTES[i]).hidden = ROUTES[i] !== id;
+    }
+    for (var j = 0; j < links.length; j++) {
+      if (links[j].getAttribute('data-route') === id) {
+        links[j].setAttribute('aria-current', 'page');
+      } else {
+        links[j].removeAttribute('aria-current');
+      }
+    }
+    // Overview's heading is the site name; prefixing it would double the title
+    var t = document.getElementById(id).querySelector('h1');
+    var h = t ? t.textContent.trim() : '';
+    document.title = (h && h !== SITE) ? h + ' · ' + SITE : SITE;
+  }
+
+  function go() {
+    show(routeFromHash());
+    if (window.scrollTo) window.scrollTo(0, 0);
+  }
+
+  window.addEventListener('hashchange', go);
+  go();
+
+  // --- 밝기 전환. 저장이 막힌 환경에서도 페이지는 그대로 동작합니다. ---
+  var root = document.documentElement;
+  var btn = document.getElementById('tt');
+  try {
+    var saved = localStorage.getItem('vcsasr-theme');
+    if (saved === 'dark' || saved === 'light') root.setAttribute('data-theme', saved);
+  } catch (e) {}
+
+  btn.addEventListener('click', function () {
+    var dark = root.getAttribute('data-theme') === 'dark' ||
+      (!root.hasAttribute('data-theme') &&
+        window.matchMedia('(prefers-color-scheme: dark)').matches);
+    var next = dark ? 'light' : 'dark';
+    root.setAttribute('data-theme', next);
+    try { localStorage.setItem('vcsasr-theme', next); } catch (e) {}
+  });
+})();
+</script>
+</body>
+</html>
