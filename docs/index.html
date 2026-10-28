@@ -122,9 +122,6 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .nl a[aria-current="page"] .n{color:var(--brand-sub)}
 .tt{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:0.08em;color:var(--muted);background:none;border:1px solid var(--line);padding:6px 9px;cursor:pointer;white-space:nowrap}
 .tt:hover{color:var(--brand);border-color:var(--brand)}
-.pgfoot{border-top:1px solid var(--line);padding-block:20px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
-.pgfoot a{font-weight:600;font-size:14px;display:flex;gap:8px;align-items:baseline}
-.pgfoot a .n{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--faint)}
 .sitefoot{border-top:1px solid var(--line);background:var(--surf);margin-top:8px}
 .sitefoot .wrap{padding-block:20px;display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between}
 a:focus-visible,button:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
@@ -183,6 +180,38 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--brand);outline-offs
 #task .ph h1{font-size:28px}
 #task .flow{grid-template-columns:minmax(0,1fr);gap:8px}
 #task .flow .ar{transform:rotate(90deg)}
+}
+#baseline .btn{display:inline-flex;align-items:center;gap:7px;font-weight:600;font-size:13.5px;padding:7px 14px;border:1px solid var(--brand-fill);background:var(--brand-fill);color:var(--on-brand);white-space:nowrap}
+#baseline .ph h1{font-size:38px;line-height:1.16}
+#baseline .lede{font-size:17.5px;color:var(--body);margin:16px 0 0;max-width:60ch}
+#baseline .sec{padding-block:30px}
+#baseline .sec h2{font-size:21px;margin:0 0 14px}
+#baseline .g3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+#baseline .card{border:1px solid var(--line);padding:20px}
+#baseline .card .lab{font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:0.1em;color:var(--muted);margin:0 0 9px}
+#baseline .card h3{font-size:16px;margin:0 0 8px}
+#baseline .card p{margin:0;font-size:13.5px;color:var(--muted)}
+#baseline .card .tag{display:inline-block;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.07em;padding:2px 7px;border:1px solid var(--line);color:var(--muted);margin-top:12px}
+#baseline .card.on{border-color:var(--brand-fill)}
+#baseline .card.on .lab{color:var(--brand)}
+#baseline .card.on .tag{border-color:var(--flag);color:var(--flag)}
+#baseline table{border-collapse:collapse;width:100%;font-size:13.5px}
+#baseline th,#baseline td{border-bottom:1px solid var(--line);padding:9px 11px;text-align:left;vertical-align:top}
+#baseline th{font-size:11px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;color:var(--muted);background:var(--surf2)}
+#baseline .fix{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.06em;color:var(--brand)}
+#baseline .var{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.06em;color:var(--flag)}
+#baseline .scroll{overflow-x:auto;border:1px solid var(--line)}
+#baseline pre{font-family:'JetBrains Mono',monospace;font-size:12.5px;line-height:1.72;background:var(--ink);color:var(--line);padding:16px;margin:0;overflow-x:auto;white-space:pre}
+#baseline pre .c{color:var(--faint2)}
+#baseline .steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-bottom:16px}
+#baseline .step{display:grid;grid-template-columns:30px minmax(0,1fr);gap:12px;align-items:start}
+#baseline .step .no{width:26px;height:26px;border:1px solid var(--brand-fill);color:var(--brand);font-family:'JetBrains Mono',monospace;font-size:12px;display:flex;align-items:center;justify-content:center}
+#baseline .step h3{font-size:14.5px;margin:0 0 4px}
+#baseline .step p{margin:0;font-size:13px;color:var(--muted)}
+#baseline .next{border-top:1px solid var(--line);padding-block:20px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+@media(max-width:900px){#baseline .nl{display:none}
+#baseline .g3,#baseline .steps{grid-template-columns:minmax(0,1fr)}
+#baseline .ph h1{font-size:28px}
 }
 #data .btn{display:inline-flex;align-items:center;gap:7px;font-weight:600;font-size:13.5px;padding:7px 14px;border:1px solid var(--brand-fill);background:var(--brand-fill);color:var(--on-brand);white-space:nowrap}
 #data .btn-g{background:var(--bg);color:var(--brand)}
@@ -277,38 +306,6 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--brand);outline-offs
 #leaderboard .ph h1{font-size:28px}
 #leaderboard .flow{grid-template-columns:1fr}
 }
-#baseline .btn{display:inline-flex;align-items:center;gap:7px;font-weight:600;font-size:13.5px;padding:7px 14px;border:1px solid var(--brand-fill);background:var(--brand-fill);color:var(--on-brand);white-space:nowrap}
-#baseline .ph h1{font-size:38px;line-height:1.16}
-#baseline .lede{font-size:17.5px;color:var(--body);margin:16px 0 0;max-width:60ch}
-#baseline .sec{padding-block:30px}
-#baseline .sec h2{font-size:21px;margin:0 0 14px}
-#baseline .g3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
-#baseline .card{border:1px solid var(--line);padding:20px}
-#baseline .card .lab{font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:0.1em;color:var(--muted);margin:0 0 9px}
-#baseline .card h3{font-size:16px;margin:0 0 8px}
-#baseline .card p{margin:0;font-size:13.5px;color:var(--muted)}
-#baseline .card .tag{display:inline-block;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.07em;padding:2px 7px;border:1px solid var(--line);color:var(--muted);margin-top:12px}
-#baseline .card.on{border-color:var(--brand-fill)}
-#baseline .card.on .lab{color:var(--brand)}
-#baseline .card.on .tag{border-color:var(--flag);color:var(--flag)}
-#baseline table{border-collapse:collapse;width:100%;font-size:13.5px}
-#baseline th,#baseline td{border-bottom:1px solid var(--line);padding:9px 11px;text-align:left;vertical-align:top}
-#baseline th{font-size:11px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;color:var(--muted);background:var(--surf2)}
-#baseline .fix{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.06em;color:var(--brand)}
-#baseline .var{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.06em;color:var(--flag)}
-#baseline .scroll{overflow-x:auto;border:1px solid var(--line)}
-#baseline pre{font-family:'JetBrains Mono',monospace;font-size:12.5px;line-height:1.72;background:var(--ink);color:var(--line);padding:16px;margin:0;overflow-x:auto;white-space:pre}
-#baseline pre .c{color:var(--faint2)}
-#baseline .steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-bottom:16px}
-#baseline .step{display:grid;grid-template-columns:30px minmax(0,1fr);gap:12px;align-items:start}
-#baseline .step .no{width:26px;height:26px;border:1px solid var(--brand-fill);color:var(--brand);font-family:'JetBrains Mono',monospace;font-size:12px;display:flex;align-items:center;justify-content:center}
-#baseline .step h3{font-size:14.5px;margin:0 0 4px}
-#baseline .step p{margin:0;font-size:13px;color:var(--muted)}
-#baseline .next{border-top:1px solid var(--line);padding-block:20px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
-@media(max-width:900px){#baseline .nl{display:none}
-#baseline .g3,#baseline .steps{grid-template-columns:minmax(0,1fr)}
-#baseline .ph h1{font-size:28px}
-}
 #limits .btn{display:inline-flex;align-items:center;gap:7px;font-weight:600;font-size:13.5px;padding:7px 14px;border:1px solid var(--brand-fill);background:var(--brand-fill);color:var(--on-brand);white-space:nowrap}
 #limits .ph h1{font-size:38px;line-height:1.16}
 #limits .lede{font-size:17.5px;color:var(--body);margin:16px 0 0;max-width:60ch}
@@ -370,10 +367,10 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--brand);outline-offs
   <nav class="nl" id="nav" aria-label="페이지">
       <a href="#/overview" data-route="overview"><span class="n">01</span>Overview</a>
       <a href="#/task" data-route="task"><span class="n">02</span>Task</a>
-      <a href="#/data" data-route="data"><span class="n">03</span>Data</a>
-      <a href="#/evaluation" data-route="evaluation"><span class="n">04</span>Evaluation</a>
-      <a href="#/leaderboard" data-route="leaderboard"><span class="n">05</span>Leaderboard</a>
-      <a href="#/baseline" data-route="baseline"><span class="n">06</span>Baseline</a>
+      <a href="#/baseline" data-route="baseline"><span class="n">03</span>Baseline</a>
+      <a href="#/data" data-route="data"><span class="n">04</span>Data</a>
+      <a href="#/evaluation" data-route="evaluation"><span class="n">05</span>Evaluation</a>
+      <a href="#/leaderboard" data-route="leaderboard"><span class="n">06</span>Leaderboard</a>
       <a href="#/limits" data-route="limits"><span class="n">07</span>Limits</a>
       <a href="#/resources" data-route="resources"><span class="n">08</span>Resources</a>
   </nav>
@@ -425,6 +422,7 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--brand);outline-offs
   </div>
 
   <div class="wrap next">
+    <span></span>
     <a href="#/task"><span class="n">02</span>Task Definition &rarr;</a>
   </div>
 </section>
@@ -506,13 +504,89 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--brand);outline-offs
   </div>
 
   <div class="wrap next">
-    <a href="#/overview">&larr; <span class="n">01</span>Overview</a>
-    <a href="#/data"><span class="n">03</span>Dataset &rarr;</a>
+    <a href="#/overview">&larr; <span class="n">01</span>Challenge Description</a>
+    <a href="#/baseline"><span class="n">03</span>Baseline &amp; Method &rarr;</a>
+  </div>
+</section>
+<section id="baseline" class="pg" hidden>
+<div class="wrap ph">
+    <p class="eyebrow">03 / METHOD</p>
+    <h1>Baseline &amp; Method</h1>
+    <p class="lede">베이스라인 두 개는 학습이 필요 없습니다. 제안 모델만 학습합니다.</p>
+  </div>
+
+  <div class="wrap sec">
+    <div class="g3">
+      <div class="card">
+        <p class="lab">BASELINE 1</p>
+        <h3>Single Channel + Frozen ASR</h3>
+        <p>활성 채널 중 최저 인덱스 하나만 사용. 방위각은 균일 분포, 거리는 에너지 기반 회귀.</p>
+        <span class="tag">학습 불필요</span>
+      </div>
+      <div class="card">
+        <p class="lab">BASELINE 2</p>
+        <h3>SRP-PHAT + Delay-and-Sum</h3>
+        <p>36개 방향의 조향 응답을 softmax로 분포화. 추정 방향으로 빔포밍한 단일 채널을 같은 Frozen ASR에 입력.</p>
+        <span class="tag">학습 불필요</span>
+      </div>
+      <div class="card on">
+        <p class="lab">PROPOSED</p>
+        <h3>TAC + GRU</h3>
+        <p>가변 채널 TAC로 공간 특징을 통합. 동일 GRU 구조에서 청크 간 상태 전달만 켜고 끕니다.</p>
+        <span class="tag">학습 필요 · 12/7 마감</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="wrap sec">
+    <h2>통제 변인</h2>
+    <p class="sm muted">세 시스템에서 ASR과 화자 인코더와 관측 범위를 같게 둡니다. 성능 차이의 원인을 프론트엔드와 시간 상태로 좁히기 위한 조건입니다.</p>
+    <div class="scroll">
+      <table>
+        <thead><tr><th style="width:30%">요소</th><th style="width:110px">상태</th><th>값</th></tr></thead>
+        <tbody>
+          <tr><td>ASR 백엔드</td><td><span class="fix">FIXED</span></td><td class="m">wav2vec2-base-960h (frozen)</td></tr>
+          <tr><td>화자 인코더</td><td><span class="fix">FIXED</span></td><td class="m">ECAPA-TDNN (frozen)</td></tr>
+          <tr><td>관측 범위</td><td><span class="fix">FIXED</span></td><td class="m">causal</td></tr>
+          <tr><td>청크 길이 / hop</td><td><span class="fix">FIXED</span></td><td class="m">1.0 s / 0.25 s</td></tr>
+          <tr><td>공간 프론트엔드</td><td><span class="var">VARIED</span></td><td>단일 채널 &middot; SRP-PHAT &middot; TAC</td></tr>
+          <tr><td>청크 간 상태 전달</td><td><span class="var">VARIED</span></td><td>Chunk-Reset &middot; Carry-Over</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note" style="margin-top:14px">
+      위치 출력 분기만 추가하고 ASR 입력과 추론 경로가 같다면 WER 향상을 주장하지 않습니다. 그 경우는 전사에 공간·화자 정보를 더한 멀티태스크 시스템으로 평가합니다.
+    </div>
+  </div>
+
+  <div class="wrap sec">
+    <h2>재현 절차</h2>
+    <div class="steps">
+      <div class="step"><span class="no">1</span><div><h3>평가셋 생성</h3><p>고정 시드로 eval-dev를 만듭니다.</p></div></div>
+      <div class="step"><span class="no">2</span><div><h3>베이스라인 추론</h3><p>predictions.jsonl을 출력합니다.</p></div></div>
+      <div class="step"><span class="no">3</span><div><h3>로컬 채점</h3><p>evaluate.py로 점수를 확인합니다.</p></div></div>
+    </div>
+    <pre><span class="c"># 1) 평가셋 생성 (고정 시드)</span>
+python make_eval_dev.py --out data/eval-dev --n-sessions 12 --seed 20261029
+
+<span class="c"># 2) 베이스라인 추론</span>
+python -m baselines.single_channel --eval-dir data/eval-dev \
+    --out predictions.jsonl --scope causal --track 1
+
+<span class="c"># 3) 로컬 채점</span>
+python evaluate.py --pred predictions.jsonl \
+    --gt data/eval-dev/ground_truth.jsonl --track 1</pre>
+    <p class="sm muted" style="margin-top:12px">evaluate.py는 표준 라이브러리와 numpy만 씁니다. 외부 서버나 유료 계정 없이 같은 점수가 나옵니다.</p>
+  </div>
+
+  <div class="wrap next">
+    <a href="#/task">&larr; <span class="n">02</span>Task Definition</a>
+    <a href="#/data"><span class="n">04</span>Dataset &rarr;</a>
   </div>
 </section>
 <section id="data" class="pg" hidden>
 <div class="wrap ph">
-    <p class="eyebrow">03 / DATA</p>
+    <p class="eyebrow">04 / DATASET</p>
     <h1>Dataset</h1>
     <p class="lede">LibriSpeech 음성을 4채널 공간 음향으로 합성합니다. 평가셋은 정답까지 전부 공개합니다.</p>
   </div>
@@ -608,13 +682,13 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--brand);outline-offs
   </div>
 
   <div class="wrap next">
-    <a href="#/task">&larr; <span class="n">02</span>Task</a>
-    <a href="#/evaluation"><span class="n">04</span>Evaluation Setup &rarr;</a>
+    <a href="#/baseline">&larr; <span class="n">03</span>Baseline &amp; Method</a>
+    <a href="#/evaluation"><span class="n">05</span>Evaluation Setup &rarr;</a>
   </div>
 </section>
 <section id="evaluation" class="pg" hidden>
 <div class="wrap ph">
-    <p class="eyebrow">04 / EVALUATION</p>
+    <p class="eyebrow">05 / EVALUATION</p>
     <h1>Evaluation Setup</h1>
     <p class="lede">모든 시스템이 같은 평가셋과 같은 시간 격자, 같은 화자 매칭 규칙을 씁니다.</p>
   </div>
@@ -698,13 +772,13 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--brand);outline-offs
   </div>
 
   <div class="wrap next">
-    <a href="#/data">&larr; <span class="n">03</span>Dataset</a>
-    <a href="#/leaderboard"><span class="n">05</span>Leaderboard &rarr;</a>
+    <a href="#/data">&larr; <span class="n">04</span>Dataset</a>
+    <a href="#/leaderboard"><span class="n">06</span>Leaderboard &rarr;</a>
   </div>
 </section>
 <section id="leaderboard" class="pg" hidden>
 <div class="wrap ph">
-    <p class="eyebrow">05 / RESULTS</p>
+    <p class="eyebrow">06 / RESULTS</p>
     <h1>Leaderboard</h1>
     <p class="lede">eval-dev 864케이스 기준 실측값입니다. 같은 채점기를 Colab에서 그대로 돌려 재현할 수 있습니다.</p>
   </div>
@@ -833,84 +907,8 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--brand);outline-offs
   </div>
 
   <div class="wrap next">
-    <a href="#/evaluation">&larr; <span class="n">04</span>Evaluation</a>
-    <a href="#/baseline"><span class="n">06</span>Baseline &amp; Method &rarr;</a>
-  </div>
-</section>
-<section id="baseline" class="pg" hidden>
-<div class="wrap ph">
-    <p class="eyebrow">06 / BASELINE</p>
-    <h1>Baseline &amp; Method</h1>
-    <p class="lede">베이스라인 두 개는 학습이 필요 없습니다. 제안 모델만 학습합니다.</p>
-  </div>
-
-  <div class="wrap sec">
-    <div class="g3">
-      <div class="card">
-        <p class="lab">BASELINE 1</p>
-        <h3>Single Channel + Frozen ASR</h3>
-        <p>활성 채널 중 최저 인덱스 하나만 사용. 방위각은 균일 분포, 거리는 에너지 기반 회귀.</p>
-        <span class="tag">학습 불필요</span>
-      </div>
-      <div class="card">
-        <p class="lab">BASELINE 2</p>
-        <h3>SRP-PHAT + Delay-and-Sum</h3>
-        <p>36개 방향의 조향 응답을 softmax로 분포화. 추정 방향으로 빔포밍한 단일 채널을 같은 Frozen ASR에 입력.</p>
-        <span class="tag">학습 불필요</span>
-      </div>
-      <div class="card on">
-        <p class="lab">PROPOSED</p>
-        <h3>TAC + GRU</h3>
-        <p>가변 채널 TAC로 공간 특징을 통합. 동일 GRU 구조에서 청크 간 상태 전달만 켜고 끕니다.</p>
-        <span class="tag">학습 필요 · 12/7 마감</span>
-      </div>
-    </div>
-  </div>
-
-  <div class="wrap sec">
-    <h2>통제 변인</h2>
-    <p class="sm muted">세 시스템에서 ASR과 화자 인코더와 관측 범위를 같게 둡니다. 성능 차이의 원인을 프론트엔드와 시간 상태로 좁히기 위한 조건입니다.</p>
-    <div class="scroll">
-      <table>
-        <thead><tr><th style="width:30%">요소</th><th style="width:110px">상태</th><th>값</th></tr></thead>
-        <tbody>
-          <tr><td>ASR 백엔드</td><td><span class="fix">FIXED</span></td><td class="m">wav2vec2-base-960h (frozen)</td></tr>
-          <tr><td>화자 인코더</td><td><span class="fix">FIXED</span></td><td class="m">ECAPA-TDNN (frozen)</td></tr>
-          <tr><td>관측 범위</td><td><span class="fix">FIXED</span></td><td class="m">causal</td></tr>
-          <tr><td>청크 길이 / hop</td><td><span class="fix">FIXED</span></td><td class="m">1.0 s / 0.25 s</td></tr>
-          <tr><td>공간 프론트엔드</td><td><span class="var">VARIED</span></td><td>단일 채널 &middot; SRP-PHAT &middot; TAC</td></tr>
-          <tr><td>청크 간 상태 전달</td><td><span class="var">VARIED</span></td><td>Chunk-Reset &middot; Carry-Over</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <div class="note" style="margin-top:14px">
-      위치 출력 분기만 추가하고 ASR 입력과 추론 경로가 같다면 WER 향상을 주장하지 않습니다. 그 경우는 전사에 공간·화자 정보를 더한 멀티태스크 시스템으로 평가합니다.
-    </div>
-  </div>
-
-  <div class="wrap sec">
-    <h2>재현 절차</h2>
-    <div class="steps">
-      <div class="step"><span class="no">1</span><div><h3>평가셋 생성</h3><p>고정 시드로 eval-dev를 만듭니다.</p></div></div>
-      <div class="step"><span class="no">2</span><div><h3>베이스라인 추론</h3><p>predictions.jsonl을 출력합니다.</p></div></div>
-      <div class="step"><span class="no">3</span><div><h3>로컬 채점</h3><p>evaluate.py로 점수를 확인합니다.</p></div></div>
-    </div>
-    <pre><span class="c"># 1) 평가셋 생성 (고정 시드)</span>
-python make_eval_dev.py --out data/eval-dev --n-sessions 12 --seed 20261029
-
-<span class="c"># 2) 베이스라인 추론</span>
-python -m baselines.single_channel --eval-dir data/eval-dev \
-    --out predictions.jsonl --scope causal --track 1
-
-<span class="c"># 3) 로컬 채점</span>
-python evaluate.py --pred predictions.jsonl \
-    --gt data/eval-dev/ground_truth.jsonl --track 1</pre>
-    <p class="sm muted" style="margin-top:12px">evaluate.py는 표준 라이브러리와 numpy만 씁니다. 외부 서버나 유료 계정 없이 같은 점수가 나옵니다.</p>
-  </div>
-
-  <div class="wrap next">
-    <a href="#/leaderboard">&larr; <span class="n">05</span>Leaderboard</a>
-    <a href="#/limits"><span class="n">07</span>Scope &amp; Limits &rarr;</a>
+    <a href="#/evaluation">&larr; <span class="n">05</span>Evaluation Setup</a>
+    <a href="#/limits"><span class="n">07</span>Physical Limits &rarr;</a>
   </div>
 </section>
 <section id="limits" class="pg" hidden>
@@ -982,7 +980,7 @@ python evaluate.py --pred predictions.jsonl \
   </div>
 
   <div class="wrap next">
-    <a href="#/baseline">&larr; <span class="n">06</span>Baseline</a>
+    <a href="#/leaderboard">&larr; <span class="n">06</span>Leaderboard</a>
     <a href="#/resources"><span class="n">08</span>Code &amp; References &rarr;</a>
   </div>
 </section>
@@ -1066,8 +1064,7 @@ python evaluate.py --pred predictions.jsonl \
   </div>
 
   <div class="wrap next">
-    <a href="#/limits">&larr; <span class="n">07</span>Limits</a>
-    <a href="#/overview"><span class="n">01</span>Overview &rarr;</a>
+    <a href="#/limits">&larr; <span class="n">07</span>Physical Limits</a>
   </div>
 </section>
 </main>
@@ -1079,7 +1076,7 @@ python evaluate.py --pred predictions.jsonl \
 
 <script>
 (function () {
-  var ROUTES = ['overview', 'task', 'data', 'evaluation', 'leaderboard', 'baseline', 'limits', 'resources'];
+  var ROUTES = ['overview', 'task', 'baseline', 'data', 'evaluation', 'leaderboard', 'limits', 'resources'];
   var SITE = 'Variable-Channel Spatial ASR';
   var nav = document.getElementById('nav');
   var links = nav.querySelectorAll('a[data-route]');
