@@ -1,0 +1,35 @@
+# --- generated datasets -----------------------------------------------------
+# eval-dev / eval-test audio is regenerated from simulate.py + a fixed seed,
+# so it is never committed. See README.md "eval-dev 배포 규격".
+data/
+*.wav
+*.flac
+
+# --- submission and scoring artefacts ---------------------------------------
+predictions.jsonl
+scores.json
+scores_*.json
+runs/
+
+# --- model weights ----------------------------------------------------------
+checkpoints/
+*.ckpt
+*.pt
+*.pth
+*.safetensors
+
+# --- python -----------------------------------------------------------------
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- editors / OS -----------------------------------------------------------
+.DS_Store
+.idea/
+.vscode/

@@ -1,0 +1,58 @@
+# Variable-Channel Spatial ASR benchmark -- dependencies
+#
+# 두 단으로 나뉘어 있다. 채점자가 점수만 재계산하려면 첫 단만 설치하면 된다.
+#   최소 설치:  python3 -m pip install numpy==2.2.4
+#   전체 설치:  python3 -m pip install -r requirements.txt
+#
+# 버전 표기 규칙
+#   ==X.Y.Z       이 환경에서 실제로 임포트되는 것을 확인한 버전 (핀 고정)
+#   >=X.Y  [미확인] 확인하지 못한 버전. 이번 회차에 설치 검증을 하지 않았으므로
+#                  하한만 둔다. 환경을 처음 만든 사람이 실제 해석된 버전으로
+#                  핀을 바꾸고 [미확인] 표시를 지워라.
+#
+# 확인 환경: Python 3.13.11 / macOS (darwin 27.0.0), 2026-10-29.
+# spec.py 와 evaluate.py 는 Python 3.10+ 문법(`from __future__ import annotations`,
+# PEP 604 유니온)을 쓴다. 3.9 이하는 지원하지 않는다.
+
+
+# ---------------------------------------------------------------------------
+# evaluate.py 전용 (최소)
+# ---------------------------------------------------------------------------
+# 공식 점수 재계산에 필요한 전부. spec.py 는 stdlib(math, typing)만 쓰고,
+# evaluate.py 는 확률 벡터 연산에만 numpy 를 쓴다.
+# torch / transformers / pyroomacoustics 없이도 `make score` 와 `make test` 가
+# 통과해야 한다 -- 무거운 의존성은 모두 함수 안 지연 임포트로 격리되어 있다.
+numpy==2.2.4
+
+
+# ---------------------------------------------------------------------------
+# 데이터 생성·베이스라인용
+# ---------------------------------------------------------------------------
+numpy==2.2.4          # 위 최소 단과 동일 핀. 중복 기재이며 pip 가 정상 처리하는 것을 확인했다.
+torch==2.9.1          # 확인됨: 이 환경에 설치되어 임포트됨
+pyroomacoustics>=0.7.3  # [미확인] 이미지 소스법 RIR 생성기. 미설치 환경이라 해석 버전 미확인
+soundfile>=0.12.1     # [미확인] libsndfile 바인딩. 다채널 int16 WAV 쓰기용
+scipy>=1.11           # [미확인] STFT / 리샘플 / 선형대수 (GCC-PHAT, MVDR)
+torchaudio>=2.9       # [미확인] torch 2.9.1 과 마이너 버전을 맞춰야 한다 (2.9.x)
+transformers>=4.40    # [미확인] 동결 ASR 백엔드 로더
+
+# 선택: 개발용. 없어도 `make test` 는 unittest/doctest 로 동작한다.
+# pytest>=8.0         # [미확인]
+
+
+# ---------------------------------------------------------------------------
+# 의존성 스택 충돌 경고 -- 반드시 읽어라
+# ---------------------------------------------------------------------------
+# 1) NVIDIA NeMo 를 asteroid / speechbrain / transformers 와 한 가상환경에 같이
+#    넣지 마라. NeMo 는 huggingface-hub, transformers, numpy, pytorch-lightning
+#    상한을 좁게 박아두는 편이고, asteroid 는 오래된 numpy/scipy 조합을 끌고
+#    오는 편이다. 같이 설치하면 pip 가 resolve 에 성공해도 임포트 시점에
+#    깨지는 조합이 나온다 (전형적으로 huggingface-hub API 시그니처 불일치).
+#    -> 이번 회차는 **transformers 계열 하나로 통일한다.** NeMo·asteroid·
+#       speechbrain 은 requirements.txt 에 넣지 않는다.
+# 2) speechbrain 화자 임베딩이 필요해지면 `.venv-speechbrain` 별도 환경에서
+#    임베딩만 뽑아 파일로 떨어뜨리고, 메인 환경은 그 파일만 읽어라.
+# 3) torch 와 torchaudio 는 반드시 같은 마이너(2.9.x)여야 한다. 섞으면
+#    `undefined symbol` 로 임포트가 실패한다.
+# 4) macOS arm64 에서 pyroomacoustics 는 소스 빌드가 걸릴 수 있다
+#    (C++ 확장). 실패하면 Xcode CLT 설치 후 재시도.
