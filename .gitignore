@@ -1,8 +1,13 @@
 # --- generated datasets -----------------------------------------------------
-# eval-dev / eval-test audio is regenerated from simulate.py + a fixed seed,
-# so it is never committed. See README.md "eval-dev 배포 규격".
-data/
-*.wav
+# eval-dev ships WITH the repository: the challenge announcement requires the
+# evaluation dataset inside the linked GitHub repo, and a seed plus a generator
+# is not the dataset. See README.md "eval-dev 배포 규격".
+#
+# Two things still stay out. RIR bundles are generation internals that nothing
+# in scoring reads and that the same seed reproduces. eval-test is the held-out
+# split; committing its labels would defeat the point of holding it out.
+data/**/rir/
+data/eval-test/
 *.flac
 
 # --- submission and scoring artefacts ---------------------------------------
