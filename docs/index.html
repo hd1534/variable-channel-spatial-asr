@@ -1673,7 +1673,7 @@ tr.group-row td {
         <!-- Chapter 1 -->
         <section class="chapter-section" id="task">
           <h2 id="ch-task" class="chapter-h2" data-d1-title="1. 과제 정의"><span class="sec-num">1.</span>과제 정의</h2>
-          <p class="chapter-lead">1~4채널 임의 활성 부분집합으로부터 케이스별 화자 전사문과 0.25초 격자 위의 화자·위치 분포를 함께 산출합니다.</p>
+          <p class="chapter-lead">1~4채널 임의 활성 부분집합으로부터 케이스별 화자 전사문과 0.25초 격자 위의 화자 귀속을 산출하며, 화자 구분에 쓰는 공간 단서로 위치 분포를 함께 출력합니다.</p>
 
           <div class="subtopic-block">
             <h3 id="task-io" class="subtopic-h3" data-subtopic="1.1 입출력 구조와 단일 가중치"><span class="sub-num">1.1</span>입출력 구조와 단일 가중치 전제</h3>
@@ -2056,7 +2056,7 @@ python evaluate.py --pred results/b2_pred.jsonl --gt data/eval-dev/ground_truth.
         <!-- Chapter 4 -->
         <section class="chapter-section" id="evaluation">
           <h2 id="ch-evaluation" class="chapter-h2" data-d1-title="4. 평가 지표 및 채점 규칙"><span class="sec-num">4.</span>평가 지표 및 채점 규칙</h2>
-          <p class="chapter-lead">전사 정확도, 화자 귀속, 공간 점 오차, 확률 분포 보정 지표를 결합하되 단위가 다른 지표를 임의 가중합하지 않고 개별 보고합니다.</p>
+          <p class="chapter-lead">연구 질문인 화자 구분은 <code>cpWER</code>와 <code>Spk Acc</code>로 판정하고, 방위·거리 오차와 분포 지표는 마이크 수별로 얻는 공간 정보를 진단하는 데 씁니다. 단위가 다른 지표를 임의 가중합하지 않고 개별 보고합니다.</p>
 
           <div class="subtopic-block">
             <h3 id="eval-grid" class="subtopic-h3" data-subtopic="4.1 방위각·거리 이산화 격자"><span class="sub-num">4.1</span>방위각·거리 이산화 격자</h3>
@@ -2067,9 +2067,12 @@ python evaluate.py --pred results/b2_pred.jsonl --gt data/eval-dev/ground_truth.
 
           <div class="subtopic-block">
             <h3 id="eval-metrics" class="subtopic-h3" data-subtopic="4.2 공식 평가 지표 체계"><span class="sub-num">4.2</span>공식 평가 지표 체계</h3>
+            <p>
+              지표는 역할에 따라 두 묶음으로 나뉩니다. 연구 질문에 직접 답하는 <strong>화자 구분 주 지표</strong>(<code>cpWER</code>, <code>Spk Acc</code>)와, 마이크 수에 따라 공간 정보가 얼마나 늘어나는지 보여 주는 <strong>공간 진단 지표</strong>(방위·거리 오차와 분포 지표)입니다. 공간 진단 지표가 좋아지더라도 그것이 실제 화자 구분 개선으로 이어지는지는 화자 구분 주 지표로 따로 확인합니다.
+            </p>
             <div tabindex="0" role="region" aria-labelledby="cap-metrics" class="table-wrap">
               <table class="stackable" style="--label-2: '집계 및 정의'; --label-3: '적용 조건';">
-                <caption id="cap-metrics">공식 평가 지표 체계 (단일 종합 점수로 합산하지 않고 과업별 주 지표 병기)</caption>
+                <caption id="cap-metrics">공식 평가 지표 체계 (화자 구분 주 지표와 공간 진단 지표를 단일 점수로 합산하지 않고 병기)</caption>
                 <thead>
                   <tr>
                     <th scope="col" style="width: 14rem;">지표 (방향)</th>
@@ -2084,17 +2087,17 @@ python evaluate.py --pred results/b2_pred.jsonl --gt data/eval-dev/ground_truth.
                     <td>케이스별 <code>final_transcripts</code>만 채점</td>
                   </tr>
                   <tr>
-                    <th scope="row"><code>cpWER</code> ↓<span class="sys-sub">다중 화자 전사</span></th>
+                    <th scope="row"><code>cpWER</code> ↓<span class="sys-sub">화자 구분 주 지표 · 다중 화자 전사</span></th>
                     <td>케이스 내 화자 순열 중 편집거리를 최소화하는 단일 순열 기준 단어 오류율 (<code>micro_global</code>)</td>
-                    <td>Track 2 전용 (Track 1에서는 규칙상 <code>N/A</code>)</td>
+                    <td>다화자 조건(Track 2)에서 산출 · 단일 화자 조건(Track 1)에서는 규칙상 <code>N/A</code></td>
                   </tr>
                   <tr>
-                    <th scope="row"><code>Spk Acc</code> ↑<span class="sys-sub">화자 귀속 정확도</span></th>
+                    <th scope="row"><code>Spk Acc</code> ↑<span class="sys-sub">화자 구분 주 지표 · 귀속 정확도</span></th>
                     <td>확정된 케이스 단일 화자 순열 아래 <code>T_eval</code> 시점의 화자 일치 비율 (<code>macro_per_case</code>)</td>
                     <td>과분할·과병합 시 빈 슬롯 패딩 후 매칭</td>
                   </tr>
                   <tr>
-                    <th scope="row"><code>Azimuth MAE</code> ↓<span class="sys-sub">공간 점 주 지표 (°)</span></th>
+                    <th scope="row"><code>Azimuth MAE</code> ↓<span class="sys-sub">공간 진단 지표 (°)</span></th>
                     <td>원형 최단 각도 오차 <code>min(|Δθ|, 360° - |Δθ|)</code>의 케이스 균등 평균 (<code>macro_per_case</code>)</td>
                     <td>명시적 점 예측 우선, 생략 시 MAP 중심 사용</td>
                   </tr>
@@ -2109,7 +2112,7 @@ python evaluate.py --pred results/b2_pred.jsonl --gt data/eval-dev/ground_truth.
                     <td>극좌표·직교좌표 동시 제출 시 정합성 검증</td>
                   </tr>
                   <tr>
-                    <th scope="row"><code>Az / Dist NLL</code> ↓<span class="sys-sub">불확실성 주 지표 (nats)</span></th>
+                    <th scope="row"><code>Az / Dist NLL</code> ↓<span class="sys-sub">공간 진단 · 불확실성 (nats)</span></th>
                     <td>정답 구간에 부여된 제출 확률 <code>p_true</code>의 음의 로그 <code>-ln max(p_true, 10⁻¹²)</code> (<code>macro_per_case</code>)</td>
                     <td>분포 미제출(점 전용) 시스템은 <code>N/A</code> 처리</td>
                   </tr>
@@ -2179,7 +2182,7 @@ python evaluate.py --pred results/b2_pred.jsonl --gt data/eval-dev/ground_truth.
         <!-- Chapter 5 -->
         <section class="chapter-section" id="leaderboard">
           <h2 id="ch-leaderboard" class="chapter-h2" data-d1-title="5. 공식 리더보드"><span class="sec-num">5.</span>공식 리더보드</h2>
-          <p class="chapter-lead">공개 평가셋 <code>eval-dev</code> 전체(864 케이스, 활성 채점 시점 25,956개, 결측 0건)에 대해 공식 채점기로 측정한 실측 결과입니다.</p>
+          <p class="chapter-lead">단일 화자 공개 평가셋 <code>eval-dev</code> 전체(864 케이스, 활성 채점 시점 25,956개, 결측 0건)에서 마이크 수에 따라 얻을 수 있는 공간 정보의 양을 공식 채점기로 측정한 실측 결과입니다. 화자 구분 주 지표(<code>cpWER</code>, <code>Spk Acc</code>)로 연구 질문에 답하는 다화자 결과는 데이터 구축 후 추가합니다.</p>
 
           <div class="subtopic-block">
             <h3 id="lb-main" class="subtopic-h3" data-subtopic="5.1 공식 종합 리더보드"><span class="sub-num">5.1</span>공식 종합 리더보드 (Track 1 · Causal)</h3>
@@ -2731,6 +2734,9 @@ python evaluate.py --pred results/b2_pred.jsonl --gt data/eval-dev/ground_truth.
             <p>
               기존 음원 위치 추정 챌린지인 <strong>LOCATA</strong>[7]는 실측 어레이에서의 방위·거리 추적을 다루지만 음성 전사(ASR)를 포함하지 않고, <strong>DCASE SELD / STARSS23</strong>[9]는 음향 이벤트 분류와 방향·거리를 결합하되 어절 단위 음성인식을 채점하지 않습니다. 반대로 <strong>CHiME-7 DASR</strong>[8]는 원거리 다중 기기 회의 전사와 화자 분할을 다루지만 런타임 가변 채널 단일 가중치 제약이나 음원의 2차원 위치 확률 분포 평가를 요구하지 않습니다. VC-SASR은 세 영역의 교차점에서 가변 채널 단일 체크포인트 전사와 보정된 공간 분포 추정을 하나의 계약으로 묶었습니다.
             </p>
+            <p>
+              본 과제와 가장 가까운 것은 공간 단서를 화자 구분에 쓰는 연구입니다. 다채널 회의 녹음에서 빔포밍과 다채널 분리로 단일 채널 화자 분할기의 초기 구간을 개선하거나[11], 방위(DOA) 추정치를 화자 분할 모델의 보조 입력으로 넣는 방식[12]이 제안되었고, 공간 특징의 이득은 분할 목적으로 함께 학습할 때 나타나며 그 폭은 완만하다는 분석[13]도 있습니다. 이들이 정해진 회의용 배열에서의 이득을 보이는 데 초점을 둔다면, 본 과제는 활성 마이크 수를 1~4개로 바꿔 가며 그 이득이 어떻게 달라지는지를 단일 가중치 조건에서 측정하는 데 초점을 둡니다.
+            </p>
 
             <ol class="ref-list" lang="en">
               <li>Y. Luo, Z. Chen, N. Mesgarani, and T. Yoshioka, “End-to-end Microphone Permutation and Number Invariant Multi-channel Speech Separation,” in <em>Proc. IEEE ICASSP</em>, 2020, pp. 6394–6398.</li>
@@ -2743,6 +2749,9 @@ python evaluate.py --pred results/b2_pred.jsonl --gt data/eval-dev/ground_truth.
               <li>S. Cornell, M. Wiesner, S. Watanabe, D. Raj, X. Chang, P. Garcia, Y. Masuyama, Z.-Q. Wang, S. Squartini, and S. Khudanpur, “The CHiME-7 DASR Challenge: Distant Meeting Transcription with Multiple Devices in Diverse Scenarios,” in <em>Proc. 7th International Workshop on Speech Processing in Everyday Environments (CHiME)</em>, 2023, pp. 1–6.</li>
               <li>K. Shimada, A. Politis, P. Sudarsanam, D. A. Krause, K. Uchida, S. Adavanne, A. Hakala, Y. Koyama, N. Takahashi, S. Takahashi, T. Virtanen, and Y. Mitsufuji, “STARSS23: An Audio-Visual Dataset of Spatial Recordings of Real Scenes with Spatiotemporal Annotations of Sound Events,” in <em>Advances in Neural Information Processing Systems (NeurIPS) Datasets and Benchmarks Track</em>, 2023.</li>
               <li>I. Szőke, M. Skácel, L. Mošner, J. Paliesek, and J. Černocký, “Building and Evaluation of a Real Room Impulse Response Dataset,” <em>IEEE J. Sel. Topics Signal Process.</em>, vol. 13, no. 4, pp. 863–876, 2019.</li>
+              <li>R. Wang, S. Niu, G. Yang, J. Du, S. Qian, T. Gao, and J. Pan, “Incorporating Spatial Cues in Modular Speaker Diarization for Multi-channel Multi-party Meetings,” <em>arXiv preprint</em> arXiv:2409.16803, 2024.</li>
+              <li>L. Li, M. Cheng, J. Liu, and M. Li, “Spatially-Augmented Sequence-to-Sequence Neural Diarization for Meetings,” <em>arXiv preprint</em> arXiv:2510.09505, 2025.</li>
+              <li>M. Deegen, T. Gburrek, T. Cord-Landwehr, T. von Neumann, J. Han, L. Burget, and R. Haeb-Umbach, “On the Role of Spatial Features in Foundation-Model-Based Speaker Diarization,” in <em>Proc. Hands-free Speech Communication and Microphone Arrays (HSCMA)</em>, 2026, arXiv:2601.02231.</li>
             </ol>
           </div>
         </section>
@@ -2754,7 +2763,7 @@ python evaluate.py --pred results/b2_pred.jsonl --gt data/eval-dev/ground_truth.
 
 <footer class="site-footer">
   <div class="footer-inner">
-    <span>Variable-Channel Spatial ASR (VC-SASR) · 평가 규격 <code>v0.2.0</code> · <code>eval-dev</code> 864케이스 실측 반영</span>
+    <span>Variable-Channel Spatial ASR (VC-SASR)</span>
     <span class="mono">황재현 · 202126887 · Ajou University (2026)</span>
   </div>
 </footer>
