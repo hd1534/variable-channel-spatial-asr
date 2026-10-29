@@ -1873,7 +1873,50 @@ tr.group-row td {
           </div>
 
           <div class="subtopic-block">
-            <h3 id="base-repro" class="subtopic-h3" data-subtopic="2.3 로컬 및 Colab 재현 절차"><span class="sub-num">2.3</span>로컬 및 Colab 재현 절차</h3>
+            <h3 id="base-hypotheses" class="subtopic-h3" data-subtopic="2.3 검증 가설"><span class="sub-num">2.3</span>검증 가설</h3>
+            <p>
+              연구 질문을 검증 가능한 가설 네 개로 나눴습니다. 각 가설은 어떤 결과가 나와야 "공간 단서가 화자 구분을 개선한다"고 말할 수 있는지를 정하며, 비교 대상은 공간 정보를 쓰지 않는 목소리 전용 기준선입니다.
+            </p>
+            <div tabindex="0" role="region" aria-labelledby="cap-hypotheses" class="table-wrap">
+              <table class="stackable" style="--label-2: '근거'; --label-3: '검증 방법';">
+                <caption id="cap-hypotheses">검증 가설과 근거 및 검증 방법</caption>
+                <thead>
+                  <tr>
+                    <th scope="col" style="width: 13.5rem;">가설</th>
+                    <th scope="col">근거</th>
+                    <th scope="col" style="width: 15rem;">검증 방법</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <th scope="row"><strong>H1</strong> · 마이크 1개에서 2개로 갈 때 가장 크게 개선<span class="sys-sub">방위 추정과 다른 양상</span></th>
+                    <td>화자 구분에는 정확한 방향이 아니라 두 사람의 공간 신호가 다르기만 하면 됩니다. 현재 설계한 2인 세션 72개 중 마이크 2개에서 두 화자의 도달 시간차가 1샘플 이상 다른 세션이 인접쌍(<code>1100</code>) 64개(89%), 대향쌍(<code>1010</code>) 68개(94%)입니다. 반면 방위 추정은 전후방 대칭 때문에 마이크 3개부터 크게 좋아집니다(<code>53.12° → 9.51°</code>).</td>
+                    <td>마이크 수(<code>M = 1~4</code>)별 <code>Spk Acc</code>·<code>cpWER</code> 개선 폭을 방위 MAE 개선 폭과 나란히 비교</td>
+                  </tr>
+                  <tr>
+                    <th scope="row"><strong>H2</strong> · 화자가 많을수록 공간 단서의 이득 증가</th>
+                    <td>목소리만 쓰는 화자 구분은 화자 수가 늘수록 화자 수 추정과 군집이 어려워져 오류가 커지는 경향이 있습니다. 반면 마이크 4개의 방위 해상도(<code>MAE 6.77°</code>)는 여러 화자의 방향을 가르기에 충분합니다. 이 경향은 목소리 전용 기준선으로 직접 측정합니다.</td>
+                    <td>화자 수별로 목소리 전용 기준선 대비 제안 모델의 <code>Spk Acc</code> 차이 비교</td>
+                  </tr>
+                  <tr>
+                    <th scope="row"><strong>H3</strong> · 목소리가 비슷한 쌍일수록 이득 증가</th>
+                    <td>같은 성별이거나 음색이 비슷한 화자는 화자 임베딩이 서로 가까워 목소리만으로는 혼동하기 쉽습니다. 서 있는 위치는 목소리와 무관하므로, 이런 쌍에서 공간 단서의 몫이 커질 것으로 예상합니다.</td>
+                    <td>화자 쌍을 화자 임베딩 코사인 유사도 구간으로 나눠 공간 단서 추가 전후의 개선 폭 비교</td>
+                  </tr>
+                  <tr>
+                    <th scope="row"><strong>H4</strong> · 공간 신호가 겹치면 목소리 단서로 후퇴</th>
+                    <td>한 화자가 다른 화자의 거울상 위치에 있으면 마이크 2개에서 도달 시간차가 같아집니다. 현재 설계에서는 마스크에 따라 4~8세션이 이에 해당합니다.</td>
+                    <td>해당 세션에서 제안 모델이 목소리 전용 기준선보다 나빠지지 않는지 확인하고, 공간 경로를 뺀 모델과도 비교</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="remark">
+              <strong>해석 원칙:</strong> H1이 성립하면서 H4에서 성능이 목소리 전용 기준선 아래로 떨어지지 않으면, 공간 단서가 목소리 단서를 대체하는 것이 아니라 보완한다고 해석합니다. 반대로 목소리 전용 기준선이 이미 포화되어 개선 여지가 없다면 그 사실 자체를 결과로 보고합니다.
+            </div>
+          </div>
+          <div class="subtopic-block">
+            <h3 id="base-repro" class="subtopic-h3" data-subtopic="2.4 로컬 및 Colab 재현 절차"><span class="sub-num">2.4</span>로컬 및 Colab 재현 절차</h3>
             <p>
               채점기(<code>evaluate.py</code>)는 파이썬 표준 라이브러리만으로 동작하며(선택적 <code>numpy</code> 가속 지원), 별도의 채점 서버나 유료 GPU 없이 동일한 수치를 즉시 재검증할 수 있습니다.
             </p>
@@ -2591,6 +2634,9 @@ python evaluate.py --pred results/b2_pred.jsonl --gt data/eval-dev/ground_truth.
             <p>
               가변 채널 공간 음성인식에서는 배열 기하 때문에 특정 조건의 성능 상한이 정해집니다. 평가 지표와 대표점 추출 규칙 역시 이러한 기하학적 제약을 왜곡하지 않도록 설계했습니다.
             </p>
+            <p>
+              대표점은 축마다 해당 지표에 맞춰 뽑습니다. 방위는 개념도 B처럼 두 봉우리로 갈릴 때 평균이 확률이 빈 각도를 가리키므로 최빈값(MAP)으로 뽑습니다. 거리는 L1 지표인 <code>Distance MAE</code>에 맞춰 분포의 중앙값으로 뽑습니다. 균일 분포에서 거리를 MAP으로 뽑으면 첫 구간 중심(<code>0.5916 m</code>)으로 쏠려 오차가 <code>1.619 m</code>로 부풀고, 중앙값(<code>1.9052 m</code>)으로 뽑으면 무정보 하한인 <code>1.101 m</code>가 됩니다(5.1절 각주 ³).
+            </p>
             <div class="schematic-3" role="group" aria-label="채널 수별 분포 형태와 평균 대표점 실패 개념도">
               <figure class="schem-plot">
                 <div class="schem-bars"><div class="schem-unif"></div><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i><i class="u"></i></div>
@@ -2630,6 +2676,15 @@ python evaluate.py --pred results/b2_pred.jsonl --gt data/eval-dev/ground_truth.
               <div class="limit-item">
                 <h4>3. 청크 간 상태 전달의 양면성과 시뮬레이션 한계</h4>
                 <p>청크 간 은닉 상태를 전달(<code>Carry-Over</code>)하면 정지 화자 조건에서는 위치 추정 분산이 줄어들 수 있으나, 화자가 교대되는 직후에는 이전 화자 위치에 머무르는 관성 지연이 발생할 수 있습니다. 또한 현재 <code>eval-dev</code>는 이미지 소스법(ISM) 시뮬레이션 기반이므로 실제 마이크 주파수 응답 편차와 산란·회절을 모두 반영하지 못하며, 후속 검증에서 <code>BUT ReverbDB</code> 등 실측 다채널 RIR 기반 평가 분할로 일반화 여부를 점검할 계획입니다. 동시 발화(overlapped speech) 음원 분리는 본 벤치마크 범위에서 제외했습니다.</p>
+              </div>
+            </div>
+          </div>
+          <div class="subtopic-block">
+            <h3 id="lim-multispk" class="subtopic-h3" data-subtopic="7.4 다화자 설계의 범위"><span class="sub-num">7.4</span>다화자 설계의 범위</h3>
+            <div class="limit-list">
+              <div class="limit-item">
+                <h4>4. 낭독 음성과 평가 화자 구성의 한계</h4>
+                <p>다화자 조건의 원천 음성인 <code>LibriSpeech</code>는 오디오북 낭독이라, 실제 회의의 끼어들기나 맞장구처럼 짧고 불규칙한 교대가 없습니다. 또한 7.3절에서 밝힌 대로 동시 발화는 범위에서 제외했기 때문에, 매 시점 활성 화자가 최대 1명인 교대 발화만 다루며 공간 단서가 가장 유리할 수 있는 겹침 구간의 이득은 측정 범위 밖입니다. 현재 분할의 평가 화자는 6명(남 5 · 여 1)으로 적고 성별이 치우쳐 있습니다. 같은 성별 쌍이 대부분이면 목소리만으로 구분하기 어려운 조건이 많아져 공간 단서의 이득이 실제보다 크게 측정될 수 있으므로, 평가 화자를 남녀 각 20명으로 구성된 표준 평가셋(<code>test-clean</code>)으로 넓히는 것을 검토하고 있습니다.</p>
               </div>
             </div>
           </div>
