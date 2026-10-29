@@ -421,13 +421,13 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--brand);outline-offs
     <p class="eyebrow">01 / OVERVIEW</p>
     <h1>Variable-Channel Spatial ASR</h1>
     <p class="ko">가변 마이크 입력을 지원하는 공간 음성인식</p>
-    <p class="lede">마이크 1개부터 4개까지, 하나의 가중치로 전사와 화자와 위치를 함께 추정합니다.</p>
+    <p class="lede">마이크가 1개든 4개든 가중치 하나로 전사와 화자와 위치를 함께 추정합니다.</p>
   </div>
 
   <div class="wrap sec">
-    <p>마이크 수가 달라지면 보통 모델을 따로 만듭니다. 이 Challenge는 1~4채널을 단일 가중치로 처리합니다.</p>
-    <p>출력은 세 가지입니다. 발화 내용, 세션 내 익명 화자 ID, 화자의 방위각과 거리.</p>
-    <p>위치는 점 하나가 아니라 확률 분포로 제출합니다. 마이크가 적으면 방향을 알 수 없고, 그 사실까지 분포로 표현해야 합니다.</p>
+    <p>마이크 수가 달라지면 보통 모델을 따로 만드는데 이 Challenge는 1~4채널을 단일 가중치로 처리합니다.</p>
+    <p>출력은 발화 내용, 세션 내 익명 화자 ID, 화자의 방위각과 거리 세 가지입니다.</p>
+    <p>마이크가 적으면 방향을 알 수 없으니 그 사실까지 분포로 표현해야 합니다. 위치는 점 하나 대신 확률 분포로 제출합니다.</p>
 
     <div class="g3" style="margin-top:26px">
       <div class="card">
@@ -443,7 +443,7 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--brand);outline-offs
       <div class="card">
         <p class="lab">REPRODUCIBILITY</p>
         <h3>Fully Open Eval</h3>
-        <p>평가셋·정답·채점 코드 전체 공개</p>
+        <p>평가셋과 정답, 채점 코드까지 전체 공개</p>
       </div>
     </div>
 
@@ -455,7 +455,7 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--brand);outline-offs
     </div>
 
     <div class="note" style="margin-top:26px">
-      <b>진행 상태.</b> 기획안 v1.7 기준입니다. 공개된 것은 평가 계약, 공식 평가기, eval-dev 864케이스, 학습이 필요 없는 통제 베이스라인 2종과 그 실측 결과입니다. Recipe 1 학습은 아직 실시하지 않았습니다.
+      <b>진행 상태.</b> 기획안 v1.7 기준이며 지금 공개된 범위는 평가 계약과 공식 평가기, eval-dev 864케이스, 학습이 필요 없는 통제 베이스라인 2종과 그 실측 결과까지인데 Recipe 1 학습은 아직 실시하지 않았습니다.
     </div>
   </div>
 
@@ -468,7 +468,7 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--brand);outline-offs
 <div class="wrap ph">
     <p class="eyebrow">02 / TASK</p>
     <h1>Task Definition</h1>
-    <p class="lede">허용된 관측 범위의 다채널 오디오만 입력받아 전사와 화자와 위치를 동시에 출력합니다.</p>
+    <p class="lede">허용된 관측 범위 안의 다채널 오디오만 입력받아 전사와 화자, 위치를 동시에 출력합니다.</p>
   </div>
 
   <div class="wrap sec">
@@ -476,12 +476,12 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--brand);outline-offs
       <div class="card">
         <p class="lab">TRACK 1</p>
         <h3>Single Stationary Speaker</h3>
-        <p>한 세션에 한 명. 화자 전환이 없어 cpWER과 적응 지연은 정의되지 않습니다.</p>
+        <p>한 세션에 한 명이고 화자 전환이 없어 cpWER과 적응 지연은 정의되지 않습니다.</p>
       </div>
       <div class="card">
         <p class="lab">TRACK 2</p>
         <h3>Two-Speaker Turn-Taking</h3>
-        <p>한 시점에 한 명만 발화. 침묵 구간 포함. 화자 순열은 케이스마다 하나로 고정합니다.</p>
+        <p>한 시점에는 한 명만 발화하며 침묵 구간도 포함합니다. 화자 순열은 케이스마다 하나로 고정합니다.</p>
       </div>
     </div>
   </div>
@@ -497,7 +497,7 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--brand);outline-offs
       <div class="st">
         <p class="lab">MODEL</p>
         <h3>Single Weight Set</h3>
-        <p>채널 수와 채널 순서에 무관한 공유 가중치</p>
+        <p>채널 수와 순서가 바뀌어도 그대로인 공유 가중치</p>
       </div>
       <div class="ar">&rarr;</div>
       <div class="st">
@@ -538,7 +538,7 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--brand);outline-offs
         </tbody>
       </table>
     </div>
-    <p class="sm muted" style="margin-top:12px">관측 범위가 다른 모델은 같은 표에서 비교하지 않습니다. Leaderboard는 세 그룹으로 분리합니다.</p>
+    <p class="sm muted" style="margin-top:12px">관측 범위가 다른 모델끼리 한 표에서 비교되는 일이 없도록 Leaderboard를 세 그룹으로 분리합니다.</p>
   </div>
 
   <div class="wrap next">
@@ -550,7 +550,7 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--brand);outline-offs
 <div class="wrap ph">
     <p class="eyebrow">03 / METHOD</p>
     <h1>Baseline &amp; Method</h1>
-    <p class="lede">베이스라인 두 개는 학습이 필요 없습니다. 제안 모델만 학습합니다.</p>
+    <p class="lede">베이스라인 두 개는 학습이 필요 없고 제안 모델만 학습합니다.</p>
   </div>
 
   <div class="wrap sec">
@@ -558,7 +558,7 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--brand);outline-offs
       <div class="card">
         <p class="lab">BASELINE 1</p>
         <h3>Single Channel + Frozen ASR</h3>
-        <p>활성 채널 중 최저 인덱스 하나만 사용. 방위각은 균일 분포, 거리는 에너지 기반 회귀.</p>
+        <p>활성 채널 중 최저 인덱스 하나만 씁니다. 방위각은 균일 분포, 거리는 에너지 기반 회귀.</p>
         <span class="tag">학습 불필요</span>
       </div>
       <div class="card">
@@ -578,7 +578,7 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--brand);outline-offs
 
   <div class="wrap sec">
     <h2>통제 변인</h2>
-    <p class="sm muted">세 시스템에서 ASR과 화자 인코더와 관측 범위를 같게 둡니다. 성능 차이의 원인을 프론트엔드와 시간 상태로 좁히기 위한 조건입니다.</p>
+    <p class="sm muted">세 시스템에서 ASR과 화자 인코더, 관측 범위를 같게 두어 성능 차이의 원인을 프론트엔드와 시간 상태로 좁힙니다.</p>
     <div class="scroll">
       <table>
         <thead><tr><th style="width:30%">요소</th><th style="width:110px">상태</th><th>값</th></tr></thead>
@@ -593,7 +593,7 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--brand);outline-offs
       </table>
     </div>
     <div class="note" style="margin-top:14px">
-      위치 출력 분기만 추가하고 ASR 입력과 추론 경로가 같다면 WER 향상을 주장하지 않습니다. 그 경우는 전사에 공간·화자 정보를 더한 멀티태스크 시스템으로 평가합니다.
+      위치 출력 분기만 추가하고 ASR 입력과 추론 경로가 그대로라면 WER 향상은 주장하지 않으며 그런 경우는 전사에 공간·화자 정보를 더한 멀티태스크 시스템으로 분류해 평가합니다.
     </div>
   </div>
 
@@ -602,7 +602,7 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--brand);outline-offs
     <div class="steps">
       <div class="step"><span class="no">1</span><div><h3>평가셋 생성</h3><p>고정 시드로 eval-dev를 만듭니다.</p></div></div>
       <div class="step"><span class="no">2</span><div><h3>베이스라인 추론</h3><p>predictions.jsonl을 출력합니다.</p></div></div>
-      <div class="step"><span class="no">3</span><div><h3>로컬 채점</h3><p>evaluate.py로 점수를 확인합니다.</p></div></div>
+      <div class="step"><span class="no">3</span><div><h3>로컬 채점</h3><p>점수는 evaluate.py로 확인합니다.</p></div></div>
     </div>
     <pre><span class="c"># 1) 평가셋 생성 (고정 시드)</span>
 python make_eval_dev.py --out data/eval-dev --n-sessions 12 --seed 20261029
@@ -614,7 +614,7 @@ python -m baselines.single_channel --eval-dir data/eval-dev \
 <span class="c"># 3) 로컬 채점</span>
 python evaluate.py --pred predictions.jsonl \
     --gt data/eval-dev/ground_truth.jsonl --track 1</pre>
-    <p class="sm muted" style="margin-top:12px">evaluate.py는 표준 라이브러리와 numpy만 씁니다. 외부 서버나 유료 계정 없이 같은 점수가 나옵니다.</p>
+    <p class="sm muted" style="margin-top:12px">evaluate.py는 표준 라이브러리와 numpy만 쓰므로 외부 서버나 유료 계정 없이도 같은 점수가 나옵니다.</p>
   </div>
 
   <div class="wrap next">
@@ -626,7 +626,7 @@ python evaluate.py --pred predictions.jsonl \
 <div class="wrap ph">
     <p class="eyebrow">04 / DATASET</p>
     <h1>Dataset</h1>
-    <p class="lede">LibriSpeech 음성을 4채널 공간 음향으로 합성합니다. 평가셋은 정답까지 전부 공개합니다.</p>
+    <p class="lede">LibriSpeech 음성을 4채널 공간 음향으로 합성한 평가셋이며 정답까지 전부 공개합니다.</p>
   </div>
 
   <div class="wrap sec">
@@ -634,13 +634,13 @@ python evaluate.py --pred predictions.jsonl \
       <div class="card on">
         <p class="lab">REQUIRED</p>
         <h3>eval-dev</h3>
-        <p>오디오, 입력 메타데이터, 정답 라벨, 파일 목록 전체 공개. 외부 서버 없이 로컬에서 같은 점수를 재현합니다.</p>
+        <p>오디오와 입력 메타데이터, 정답 라벨, 파일 목록까지 전부 공개. 외부 서버 없이 로컬에서 같은 점수를 재현합니다.</p>
         <p style="margin-top:12px"><a class="btn btn-g" href="#/resources">다운로드 &#8599;</a></p>
       </div>
       <div class="card">
         <p class="lab">OPTIONAL</p>
         <h3>eval-test</h3>
-        <p>오디오와 입력 메타데이터만 공개. 정답은 비공개 보관. 웹 Judge 운영 시에만 필요합니다.</p>
+        <p>오디오와 입력 메타데이터만 공개. 정답은 비공개 보관이며 웹 Judge 운영 시에만 필요합니다.</p>
       </div>
     </div>
   </div>
@@ -678,7 +678,7 @@ python evaluate.py --pred predictions.jsonl \
             </tbody>
           </table>
         </div>
-        <p class="sm muted" style="margin-top:12px">채널을 빼더라도 원점 (0,0)과 좌표축은 유지합니다. 활성 마이크 중심으로 원점을 다시 잡으면 채널 수 변화와 좌표계 변화가 섞입니다.</p>
+        <p class="sm muted" style="margin-top:12px">활성 마이크 중심으로 원점을 다시 잡으면 채널 수 변화와 좌표계 변화가 섞이기 때문에, 채널을 빼더라도 원점 (0,0)과 좌표축은 그대로 유지합니다.</p>
       </div>
     </div>
   </div>
@@ -689,16 +689,16 @@ python evaluate.py --pred predictions.jsonl \
       <ul class="f">
         <li><span>원본 발화 단위 분할 격리</span></li>
         <li><span>화자와 원본 발화 ID 완전 분리</span></li>
-        <li><span>세션 공통 이득 무작위화, 채널 간 차이는 &plusmn;0.5 dB 유지</span></li>
+        <li><span>세션 공통 이득은 무작위화, 채널 간 차이는 ±0.5 dB 유지</span></li>
       </ul>
       <ul class="f">
-        <li><span>거리와 RT&#8336;&#8328; 직교 2&times;2 구성</span></li>
+        <li><span>거리와 RT&#8326;&#8320; 직교 2&times;2 구성</span></li>
         <li><span>시작 시각 연속 오프셋, 채널 간 TDOA 보존</span></li>
         <li><span>평가셋 방위각·거리 bin 균등 층화</span></li>
       </ul>
     </div>
     <div class="note" style="margin-top:16px">
-      음량을 무작위화하면 소구경 배열의 거리 단서는 직접음 대 잔향음 비만 남습니다. 모델이 방의 잔향 시간을 거리로 착각하지 않는지 2&times;2 네 칸 모두에서 확인합니다.
+      음량을 무작위화하면 소구경 배열에 남는 거리 단서는 직접음 대 잔향음 비 하나뿐이어서 모델이 방의 잔향 시간을 거리로 착각하는지를 2×2 네 칸 모두에서 확인합니다.
     </div>
   </div>
 
@@ -711,7 +711,7 @@ python evaluate.py --pred predictions.jsonl \
           <tr><td>오디오 형식</td><td class="m">4ch · 16 kHz · int16 · 초당 128 KB</td></tr>
           <tr><td>세션 길이</td><td class="m">20 s 고정</td></tr>
           <tr><td>eval-dev 용량 상한</td><td class="m">500 MB</td></tr>
-          <tr><td>배포 위치</td><td>GitHub 저장소. 오디오 · 라벨 · manifest 한 곳</td></tr>
+          <tr><td>배포 위치</td><td>GitHub 저장소 한 곳에 오디오와 라벨, manifest</td></tr>
           <tr><td>채점이 읽는 것</td><td class="m">ground_truth.jsonl · 7.4 MB</td></tr>
           <tr><td>검증</td><td class="m">manifest.json · 파일별 SHA256</td></tr>
         </tbody>
@@ -728,12 +728,12 @@ python evaluate.py --pred predictions.jsonl \
 <div class="wrap ph">
     <p class="eyebrow">05 / EVALUATION</p>
     <h1>Evaluation Setup</h1>
-    <p class="lede">모든 시스템이 같은 평가셋과 같은 시간 격자, 같은 화자 매칭 규칙을 씁니다.</p>
+    <p class="lede">모든 시스템이 같은 평가셋과 시간 격자, 화자 매칭 규칙을 씁니다.</p>
   </div>
 
   <div class="wrap sec">
-    <p>방위각은 36개 bin, 거리는 8개 bin으로 제출합니다. 채점 대상은 0.25초 격자 위의 정답 활성 발화 시점입니다.</p>
-    <p>단위가 다른 WER과 각도와 거리를 합산한 종합 점수는 쓰지 않습니다.</p>
+    <p>방위각은 36개 bin, 거리는 8개 bin으로 제출하고 채점은 0.25초 격자 위의 정답 활성 발화 시점에서만 합니다.</p>
+    <p>WER과 각도와 거리는 단위가 달라 하나의 종합 점수로 합산하지 않습니다.</p>
 
     <div class="g2" style="margin-top:18px">
       <div class="scroll">
@@ -759,7 +759,7 @@ python evaluate.py --pred predictions.jsonl \
         </table>
       </div>
     </div>
-    <p class="sm muted" style="margin-top:10px">거리 bin을 로그 간격으로 둔 이유는 소구경 배열의 거리 단서가 직접음 대 잔향음 비이고, 그 비가 거리에 반비례하기 때문입니다. 등비 구간이 구간별로 비슷한 비 차이를 담습니다.</p>
+    <p class="sm muted" style="margin-top:10px">소구경 배열의 거리 단서는 직접음 대 잔향음 비인데 그 비가 거리에 반비례하므로 거리 bin을 로그 간격으로 두었습니다. 등비 구간이 구간마다 비슷한 비 차이를 담습니다.</p>
   </div>
 
   <div class="wrap sec">
@@ -776,9 +776,9 @@ python evaluate.py --pred predictions.jsonl \
           <tr><td><span class="met">Distance MAE &darr;</span><span class="role">Spatial</span></td><td>|r &minus; r&#770;| 평균</td><td>평가 범위 0.5 – 5.0 m</td></tr>
           <tr><td><span class="met">2D Pos Error &darr;</span><span class="role">Spatial</span></td><td>수평면 유클리드 거리</td><td>점 예측 우선, 생략 시 MAP bin 중심</td></tr>
           <tr><td><span class="met">Azimuth / Distance NLL &darr;</span><span class="role">Uncertainty</span></td><td>정답 bin 확률의 음의 로그</td><td style="color:var(--flag)">분포 미제출 시 N/A</td></tr>
-          <tr><td><span class="met">Coverage@90% &rarr; 90</span><span class="role">Uncertainty</span></td><td>HPD 집합에 정답 bin이 들어간 비율</td><td>확률 내림차순 누적, 비연속 허용</td></tr>
+          <tr><td><span class="met">Coverage@90% &rarr; 90</span><span class="role">Uncertainty</span></td><td>정답 bin이 HPD 집합 안에 들어간 비율</td><td>확률을 내림차순으로 누적, 비연속도 허용</td></tr>
           <tr><td><span class="met">Interval Width &darr;</span><span class="role">Uncertainty</span></td><td>HPD 집합의 bin 폭 합</td><td>단위 도 또는 미터</td></tr>
-          <tr><td><span class="met">RTF &darr;</span><span class="role">Efficiency</span></td><td>추론 시간 / 오디오 길이</td><td>재실행 측정과 자기보고 구분 표기</td></tr>
+          <tr><td><span class="met">RTF &darr;</span><span class="role">Efficiency</span></td><td>추론 시간 / 오디오 길이</td><td>재실행 측정인지 자기보고인지 구분해 표기</td></tr>
         </tbody>
       </table>
     </div>
@@ -794,14 +794,14 @@ python evaluate.py --pred predictions.jsonl \
           <tr><td><span class="rid">R-DUP</span></td><td>같은 키가 두 번 나오면 임의 선택 없이 전량 거부</td></tr>
           <tr><td><span class="rid">R-MISS</span></td><td>누락 시점에 최대 오차 대입. 방위각 180&deg;, 거리 5.0 m, 화자 오답, NLL은 클리핑 하한</td></tr>
           <tr><td><span class="rid">R-PERM</span></td><td>케이스마다 화자 순열 하나. 동률은 cpWER 최소 &rarr; 화자 일치 시점 최대 &rarr; 사전순</td></tr>
-          <tr><td><span class="rid">R-NLL</span></td><td>평활화 없음. 정답 bin에 &epsilon; = 1e-12 클리핑만 적용</td></tr>
+          <tr><td><span class="rid">R-NLL</span></td><td>평활화는 없고 정답 bin에 ε = 1e-12 클리핑만 적용</td></tr>
           <tr><td><span class="rid">R-PT</span></td><td>명시적 점 예측 우선. 생략 시에만 MAP bin 중심, 동률은 최소 인덱스</td></tr>
-          <tr><td><span class="rid">R-TXT</span></td><td>화자별 최종 전사문만 채점. 스트리밍 중간 출력은 별도 로그</td></tr>
+          <tr><td><span class="rid">R-TXT</span></td><td>화자별 최종 전사문만 채점하고 스트리밍 중간 출력은 별도 로그로</td></tr>
         </tbody>
       </table>
     </div>
     <div class="note" style="margin-top:14px">
-      누락 페널티의 NLL은 균일 분포 값이 아니라 클리핑 하한값입니다. 균일 분포 값을 쓰면 자신 없는 시점을 비우는 쪽이 유리해집니다.
+      균일 분포 값으로 두면 자신 없는 시점을 비우는 쪽이 유리해지므로 누락 페널티의 NLL은 클리핑 하한값을 씁니다.
     </div>
     <p style="margin-top:18px;display:flex;gap:10px;flex-wrap:wrap">
       <a class="btn btn-g" href="#/resources">Evaluation code &#8599;</a>
@@ -818,7 +818,7 @@ python evaluate.py --pred predictions.jsonl \
 <div class="wrap ph">
     <p class="eyebrow">06 / RESULTS</p>
     <h1>Leaderboard</h1>
-    <p class="lede">eval-dev 864케이스 기준 실측값입니다. 같은 채점기를 Colab에서 그대로 돌려 재현할 수 있습니다.</p>
+    <p class="lede">eval-dev 864케이스 기준 실측값이며 같은 채점기를 Colab에서 그대로 돌려 재현할 수 있습니다.</p>
   </div>
 
   <div class="wrap sec">
@@ -840,18 +840,18 @@ python evaluate.py --pred predictions.jsonl \
         <span class="sn">03 &middot; 결과</span>
         <h3>표 갱신</h3>
         <p>아래 표는 공식 채점기로 잰 값. scores.json 커밋 시 반영.</p>
-        <span class="f">관측 범위별 분리 &middot; 종합 점수 없음</span>
+        <span class="f">관측 범위별로 분리, 종합 점수는 없음</span>
       </div>
     </div>
     <p style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
       <a class="btn" href="https://colab.research.google.com/github/hd1534/variable-channel-spatial-asr/blob/main/notebooks/reproduce.ipynb">Colab 에서 재현 &#8599;</a>
     </p>
-    <p class="xs muted">clone · SHA256 검증 · 테스트 147개 · 커밋된 숫자 재현까지 무료 CPU 런타임에서 돕니다.</p>
+    <p class="xs muted">clone부터 SHA256 검증, 테스트 147개, 커밋된 숫자 재현까지 무료 CPU 런타임에서 돕니다.</p>
   </div>
 
   <div class="wrap sec" style="padding-top:0">
     <div class="note">
-      <b>통제 베이스라인 2종 측정 완료.</b> eval-dev 864케이스, 채점 시점 25,956개, 결측 0. 제안 모델과 외부 대조군은 아직 비어 있습니다.
+      <b>통제 베이스라인 2종 측정 완료.</b> eval-dev 864케이스에 채점 시점 25,956개, 결측 0. 제안 모델과 외부 대조군은 아직 비어 있습니다.
     </div>
   </div>
 
@@ -921,9 +921,9 @@ python evaluate.py --pred predictions.jsonl \
         </table>
       </div>
       <p class="xs muted" style="margin:12px 0 0">
-        <sup>1</sup> cpWER은 2인 조건에서만 정의됩니다. Track 1에서는 N/A.
-        <sup>2</sup> 해당 시스템은 공간 출력을 생성하지 않습니다.
-        <sup>3</sup> 바닥값입니다. Azimuth NLL 3.584 = ln 36 은 균일 분포의 값이고 MAE 90.21°는 우연 수준입니다. 단일 채널에 방향 정보가 없다는 뜻입니다. 거리 1.619 m 는 두 베이스라인 모두 거리를 추정하지 않아 같습니다.
+        <sup>1</sup> cpWER은 2인 조건에서만 정의되므로 Track 1에서는 N/A.
+        <sup>2</sup> 해당 시스템에는 공간 출력이 없습니다.
+        <sup>3</sup> Azimuth NLL 3.584 = ln 36 은 균일 분포의 값이고 MAE 90.21°는 우연 수준이어서 단일 채널에 방향 정보가 없는 바닥값입니다. 거리 1.619 m 는 두 베이스라인 모두 거리를 추정하지 않아 같습니다.
       </p>
     </div>
 
@@ -934,14 +934,14 @@ python evaluate.py --pred predictions.jsonl \
         <tbody>
           <tr><td class="m">M = 1</td><td class="num flr">85.45°</td><td class="num flr">0.126</td><td class="num flr">3.584</td><td>방향 정보 없음. 균일 분포</td></tr>
           <tr><td class="m">M = 2</td><td class="num">55.84°</td><td class="num">0.367</td><td class="num">2.107</td><td>앞뒤 모호. 정답이 양봉이라 점 추정이 불리</td></tr>
-          <tr><td class="m">M = 3</td><td class="num best">7.94°</td><td class="num best">0.903</td><td class="num">1.381</td><td>비공선 세 번째 마이크가 모호성을 깸</td></tr>
+          <tr><td class="m">M = 3</td><td class="num best">7.94°</td><td class="num best">0.903</td><td class="num">1.381</td><td>세 번째 마이크가 공선을 벗어나 모호성을 깸</td></tr>
           <tr><td class="m">M = 4</td><td class="num best">6.49°</td><td class="num best">0.918</td><td class="num best">1.142</td><td>쌍 6개로 잡음 평균화</td></tr>
         </tbody>
       </table>
     </div>
-    <p class="sm muted" style="margin-top:12px">M=2에서 M=3 사이가 이 과제의 핵심 구간입니다. 마이크 2개는 두 마이크를 잇는 축 양쪽의 시간차가 같아 앞뒤를 구분하지 못합니다. NLL은 이미 2.107로 균일(3.584)보다 크게 낮은데 MAE만 55.84°로 높은 것이 그 증거입니다. 분포로 제출받는 이유입니다.</p>
+    <p class="sm muted" style="margin-top:12px">이 과제의 핵심 구간은 M=2에서 M=3 사이입니다. 마이크 2개는 두 마이크를 잇는 축 양쪽의 시간차가 같아 앞뒤를 구분하지 못하는데 NLL은 이미 2.107로 균일(3.584)보다 크게 낮으면서 MAE만 55.84°로 높게 나옵니다. 그래서 위치를 분포 형태로 제출받습니다.</p>
 
-    <p class="sm muted" style="margin-top:16px">관측 범위가 다른 모델은 표를 분리합니다. 단위가 다른 지표를 합산한 종합 점수는 제공하지 않습니다. RTF는 측정한 기기가 다르면 비교 대상이 아니므로 같은 환경에서 잰 값만 한 표에 둡니다.</p>
+    <p class="sm muted" style="margin-top:16px">관측 범위가 다른 모델은 표를 나눠 싣습니다. 단위가 다른 지표를 합산한 종합 점수는 어디에도 없습니다. RTF는 측정 기기가 다르면 비교가 성립하지 않으므로 같은 환경에서 잰 값만 한 표에 모읍니다.</p>
   </div>
 
   <div class="wrap next">
@@ -958,7 +958,7 @@ python evaluate.py --pred predictions.jsonl \
 
   <div class="wrap sec">
     <h2>같은 순간, 채널 수만 바꿨을 때</h2>
-    <p>아래 네 그림은 Controlled Baseline 2가 <b>실제로 출력한 확률 벡터</b>입니다. 같은 오디오, 같은 시각, 입력 채널 수만 다릅니다. 세로 눈금은 넷이 공통입니다.</p>
+    <p>아래 네 그림은 Controlled Baseline 2가 <b>실제로 출력한 확률 벡터</b>입니다. 오디오와 시각은 같고 입력 채널 수만 다릅니다. 세로 눈금은 넷이 공통입니다.</p>
     <div class="pans">
       <div class="pan">
         <div class="phd">
@@ -966,7 +966,7 @@ python evaluate.py --pred predictions.jsonl \
           <span class="pv">정답 bin 확률 <b>0.028</b> · NLL <b>3.58</b></span>
         </div>
         <svg viewBox="0 0 620 104" width="100%" role="img" aria-label="마이크 1개일 때의 방위각 확률 분포. 정답 -89도. NLL 3.58"><line x1="46" y1="82.0" x2="610" y2="82.0" class="gl"></line><text x="40" y="85.5" class="ax" text-anchor="end">0.00</text><line x1="46" y1="46.0" x2="610" y2="46.0" class="gl" style="stroke:var(--line)"></line><text x="40" y="49.5" class="ax" text-anchor="end">0.28</text><line x1="46" y1="10.0" x2="610" y2="10.0" class="gl" style="stroke:var(--line)"></line><text x="40" y="13.5" class="ax" text-anchor="end">0.55</text><line x1="194.8" y1="8" x2="194.8" y2="82" class="tl"></line><rect x="47.0" y="78.4" width="13.7" height="3.6" rx="1.5" class="bar"><title>-175° · 0.028</title></rect><rect x="62.7" y="78.4" width="13.7" height="3.6" rx="1.5" class="bar"><title>-165° · 0.028</title></rect><rect x="78.3" y="78.4" width="13.7" height="3.6" rx="1.5" class="bar"><title>-155° · 0.028</title></rect><rect x="94.0" y="78.4" width="13.7" height="3.6" rx="1.5" class="bar"><title>-145° · 0.028</title></rect><rect x="109.7" y="78.4" width="13.7" height="3.6" rx="1.5" class="bar"><title>-135° · 0.028</title></rect><rect x="125.3" y="78.4" width="13.7" height="3.6" rx="1.5" class="bar"><title>-125° · 0.028</title></rect><rect x="141.0" y="78.4" width="13.7" height="3.6" rx="1.5" class="bar"><title>-115° · 0.028</title></rect><rect x="156.7" y="78.4" width="13.7" height="3.6" rx="1.5" class="bar"><title>-105° · 0.028</title></rect><rect x="172.3" y="78.4" width="13.7" height="3.6" rx="1.5" class="bar"><title>-95° · 0.028</title></rect><rect x="188.0" y="78.4" width="13.7" height="3.6" rx="1.5" class="bar"><title>-85° · 0.028</title></rect><rect x="203.7" y="78.4" width="13.7" height="3.6" rx="1.5" class="bar"><title>-75° · 0.028</title></rect><rect x="219.3" y="78.4" width="13.7" height="3.6" rx="1.5" class="bar"><title>-65° · 0.028</title></rect><rect x="235.0" y="78.4" width="13.7" height="3.6" rx="1.5" class="bar"><title>-55° · 0.028</title></rect><rect x="250.7" y="78.4" width="13.7" height="3.6" rx="1.5" class="bar"><title>-45° · 0.028</title></rect><rect x="266.3" y="78.4" width="13.7" height="3.6" rx="1.5" class="bar"><title>-35° · 0.028</title></rect><rect x="282.0" y="78.4" width="13.7" height="3.6" rx="1.5" class="bar"><title>-25° · 0.028</title></rect><rect x="297.7" y="78.4" width="13.7" height="3.6" rx="1.5" class="bar"><title>-15° · 0.028</title></rect><rect x="313.3" y="78.4" width="13.7" height="3.6" rx="1.5" class="bar"><title>-5° · 0.028</title></rect><rect x="329.0" y="78.4" width="13.7" height="3.6" rx="1.5" class="bar"><title>+5° · 0.028</title></rect><rect x="344.7" y="78.4" width="13.7" height="3.6" rx="1.5" class="bar"><title>+15° · 0.028</title></rect><rect x="360.3" y="78.4" width="13.7" height="3.6" rx="1.5" class="bar"><title>+25° · 0.028</title></rect><rect x="376.0" y="78.4" width="13.7" height="3.6" rx="1.5" class="bar"><title>+35° · 0.028</title></rect><rect x="391.7" y="78.4" width="13.7" height="3.6" rx="1.5" class="bar"><title>+45° · 0.028</title></rect><rect x="407.3" y="78.4" width="13.7" height="3.6" rx="1.5" class="bar"><title>+55° · 0.028</title></rect><rect x="423.0" y="78.4" width="13.7" height="3.6" rx="1.5" class="bar"><title>+65° · 0.028</title></rect><rect x="438.7" y="78.4" width="13.7" height="3.6" rx="1.5" class="bar"><title>+75° · 0.028</title></rect><rect x="454.3" y="78.4" width="13.7" height="3.6" rx="1.5" class="bar"><title>+85° · 0.028</title></rect><rect x="470.0" y="78.4" width="13.7" height="3.6" rx="1.5" class="bar"><title>+95° · 0.028</title></rect><rect x="485.7" y="78.4" width="13.7" height="3.6" rx="1.5" class="bar"><title>+105° · 0.028</title></rect><rect x="501.3" y="78.4" width="13.7" height="3.6" rx="1.5" class="bar"><title>+115° · 0.028</title></rect><rect x="517.0" y="78.4" width="13.7" height="3.6" rx="1.5" class="bar"><title>+125° · 0.028</title></rect><rect x="532.7" y="78.4" width="13.7" height="3.6" rx="1.5" class="bar"><title>+135° · 0.028</title></rect><rect x="548.3" y="78.4" width="13.7" height="3.6" rx="1.5" class="bar"><title>+145° · 0.028</title></rect><rect x="564.0" y="78.4" width="13.7" height="3.6" rx="1.5" class="bar"><title>+155° · 0.028</title></rect><rect x="579.7" y="78.4" width="13.7" height="3.6" rx="1.5" class="bar"><title>+165° · 0.028</title></rect><rect x="595.3" y="78.4" width="13.7" height="3.6" rx="1.5" class="bar"><title>+175° · 0.028</title></rect><text x="46.0" y="97" class="ax" text-anchor="middle">-180°</text><text x="187.0" y="97" class="ax" text-anchor="middle">-90°</text><text x="328.0" y="97" class="ax" text-anchor="middle">+0°</text><text x="469.0" y="97" class="ax" text-anchor="middle">+90°</text><text x="610.0" y="97" class="ax" text-anchor="middle">+180°</text></svg>
-        <p class="pn">방향 정보가 신호에 없습니다. 균일 분포가 정직한 답입니다. 최빈 -175° (0.03), 2위 -165° (0.03).</p>
+        <p class="pn">신호에 방향 정보가 없는 만큼 균일 분포가 정직한 답입니다. 최빈 -175° (0.03), 2위 -165° (0.03).</p>
       </div>
       <div class="pan">
         <div class="phd">
@@ -974,7 +974,7 @@ python evaluate.py --pred predictions.jsonl \
           <span class="pv">정답 bin 확률 <b>0.142</b> · NLL <b>1.95</b></span>
         </div>
         <svg viewBox="0 0 620 104" width="100%" role="img" aria-label="마이크 2개일 때의 방위각 확률 분포. 정답 -89도. NLL 1.95"><line x1="46" y1="82.0" x2="610" y2="82.0" class="gl"></line><text x="40" y="85.5" class="ax" text-anchor="end">0.00</text><line x1="46" y1="46.0" x2="610" y2="46.0" class="gl" style="stroke:var(--line)"></line><text x="40" y="49.5" class="ax" text-anchor="end">0.28</text><line x1="46" y1="10.0" x2="610" y2="10.0" class="gl" style="stroke:var(--line)"></line><text x="40" y="13.5" class="ax" text-anchor="end">0.55</text><line x1="194.8" y1="8" x2="194.8" y2="82" class="tl"></line><rect x="47.0" y="81.1" width="13.7" height="0.9" rx="1.5" class="bar"><title>-175° · 0.007</title></rect><rect x="62.7" y="81.2" width="13.7" height="0.8" rx="1.5" class="bar"><title>-165° · 0.006</title></rect><rect x="78.3" y="81.3" width="13.7" height="0.7" rx="1.5" class="bar"><title>-155° · 0.005</title></rect><rect x="94.0" y="81.3" width="13.7" height="0.7" rx="1.5" class="bar"><title>-145° · 0.006</title></rect><rect x="109.7" y="81.2" width="13.7" height="0.8" rx="1.5" class="bar"><title>-135° · 0.006</title></rect><rect x="125.3" y="80.9" width="13.7" height="1.1" rx="1.5" class="bar"><title>-125° · 0.008</title></rect><rect x="141.0" y="80.0" width="13.7" height="2.0" rx="1.5" class="bar"><title>-115° · 0.015</title></rect><rect x="156.7" y="77.0" width="13.7" height="5.0" rx="1.5" class="bar"><title>-105° · 0.038</title></rect><rect x="172.3" y="68.7" width="13.7" height="13.3" rx="1.5" class="bar"><title>-95° · 0.102</title></rect><rect x="188.0" y="63.4" width="13.7" height="18.6" rx="1.5" class="bar"><title>-85° · 0.142</title></rect><rect x="203.7" y="72.9" width="13.7" height="9.1" rx="1.5" class="bar"><title>-75° · 0.069</title></rect><rect x="219.3" y="79.2" width="13.7" height="2.8" rx="1.5" class="bar"><title>-65° · 0.022</title></rect><rect x="235.0" y="80.3" width="13.7" height="1.7" rx="1.5" class="bar"><title>-55° · 0.013</title></rect><rect x="250.7" y="80.0" width="13.7" height="2.0" rx="1.5" class="bar"><title>-45° · 0.015</title></rect><rect x="266.3" y="79.7" width="13.7" height="2.3" rx="1.5" class="bar"><title>-35° · 0.018</title></rect><rect x="282.0" y="80.2" width="13.7" height="1.8" rx="1.5" class="bar"><title>-25° · 0.014</title></rect><rect x="297.7" y="80.8" width="13.7" height="1.2" rx="1.5" class="bar"><title>-15° · 0.009</title></rect><rect x="313.3" y="81.1" width="13.7" height="0.9" rx="1.5" class="bar"><title>-5° · 0.007</title></rect><rect x="329.0" y="81.2" width="13.7" height="0.8" rx="1.5" class="bar"><title>+5° · 0.006</title></rect><rect x="344.7" y="81.3" width="13.7" height="0.7" rx="1.5" class="bar"><title>+15° · 0.006</title></rect><rect x="360.3" y="81.3" width="13.7" height="0.7" rx="1.5" class="bar"><title>+25° · 0.006</title></rect><rect x="376.0" y="81.3" width="13.7" height="0.7" rx="1.5" class="bar"><title>+35° · 0.006</title></rect><rect x="391.7" y="81.2" width="13.7" height="0.8" rx="1.5" class="bar"><title>+45° · 0.006</title></rect><rect x="407.3" y="81.2" width="13.7" height="0.8" rx="1.5" class="bar"><title>+55° · 0.006</title></rect><rect x="423.0" y="81.0" width="13.7" height="1.0" rx="1.5" class="bar"><title>+65° · 0.007</title></rect><rect x="438.7" y="80.6" width="13.7" height="1.4" rx="1.5" class="bar"><title>+75° · 0.011</title></rect><rect x="454.3" y="79.9" width="13.7" height="2.1" rx="1.5" class="bar"><title>+85° · 0.016</title></rect><rect x="470.0" y="79.7" width="13.7" height="2.3" rx="1.5" class="bar"><title>+95° · 0.017</title></rect><rect x="485.7" y="80.3" width="13.7" height="1.7" rx="1.5" class="bar"><title>+105° · 0.013</title></rect><rect x="501.3" y="80.1" width="13.7" height="1.9" rx="1.5" class="bar"><title>+115° · 0.014</title></rect><rect x="517.0" y="77.3" width="13.7" height="4.7" rx="1.5" class="bar"><title>+125° · 0.036</title></rect><rect x="532.7" y="67.9" width="13.7" height="14.1" rx="1.5" class="bar"><title>+135° · 0.108</title></rect><rect x="548.3" y="63.9" width="13.7" height="18.1" rx="1.5" class="bar"><title>+145° · 0.139</title></rect><rect x="564.0" y="73.2" width="13.7" height="8.8" rx="1.5" class="bar"><title>+155° · 0.068</title></rect><rect x="579.7" y="78.8" width="13.7" height="3.2" rx="1.5" class="bar"><title>+165° · 0.024</title></rect><rect x="595.3" y="80.6" width="13.7" height="1.4" rx="1.5" class="bar"><title>+175° · 0.011</title></rect><text x="46.0" y="97" class="ax" text-anchor="middle">-180°</text><text x="187.0" y="97" class="ax" text-anchor="middle">-90°</text><text x="328.0" y="97" class="ax" text-anchor="middle">+0°</text><text x="469.0" y="97" class="ax" text-anchor="middle">+90°</text><text x="610.0" y="97" class="ax" text-anchor="middle">+180°</text></svg>
-        <p class="pn">정답과 <b>거울상에 질량이 거의 같이</b> 실립니다. 두 마이크를 잇는 축 양쪽의 시간차가 같아서입니다. 최빈 -85° (0.14), 2위 +145° (0.14).</p>
+        <p class="pn">정답과 <b>거울상에 질량이 거의 같이</b> 실립니다. 두 마이크를 잇는 축 양쪽에서 시간차가 똑같이 나옵니다. 최빈 -85° (0.14), 2위 +145° (0.14).</p>
       </div>
       <div class="pan">
         <div class="phd">
@@ -982,7 +982,7 @@ python evaluate.py --pred predictions.jsonl \
           <span class="pv">정답 bin 확률 <b>0.279</b> · NLL <b>1.28</b></span>
         </div>
         <svg viewBox="0 0 620 104" width="100%" role="img" aria-label="마이크 3개일 때의 방위각 확률 분포. 정답 -89도. NLL 1.28"><line x1="46" y1="82.0" x2="610" y2="82.0" class="gl"></line><text x="40" y="85.5" class="ax" text-anchor="end">0.00</text><line x1="46" y1="46.0" x2="610" y2="46.0" class="gl" style="stroke:var(--line)"></line><text x="40" y="49.5" class="ax" text-anchor="end">0.28</text><line x1="46" y1="10.0" x2="610" y2="10.0" class="gl" style="stroke:var(--line)"></line><text x="40" y="13.5" class="ax" text-anchor="end">0.55</text><line x1="194.8" y1="8" x2="194.8" y2="82" class="tl"></line><rect x="47.0" y="81.1" width="13.7" height="0.9" rx="1.5" class="bar"><title>-175° · 0.007</title></rect><rect x="62.7" y="81.0" width="13.7" height="1.0" rx="1.5" class="bar"><title>-165° · 0.007</title></rect><rect x="78.3" y="81.1" width="13.7" height="0.9" rx="1.5" class="bar"><title>-155° · 0.007</title></rect><rect x="94.0" y="81.3" width="13.7" height="0.7" rx="1.5" class="bar"><title>-145° · 0.005</title></rect><rect x="109.7" y="80.8" width="13.7" height="1.2" rx="1.5" class="bar"><title>-135° · 0.009</title></rect><rect x="125.3" y="79.8" width="13.7" height="2.2" rx="1.5" class="bar"><title>-125° · 0.017</title></rect><rect x="141.0" y="77.4" width="13.7" height="4.6" rx="1.5" class="bar"><title>-115° · 0.035</title></rect><rect x="156.7" y="71.2" width="13.7" height="10.8" rx="1.5" class="bar"><title>-105° · 0.083</title></rect><rect x="172.3" y="57.1" width="13.7" height="24.9" rx="1.5" class="bar"><title>-95° · 0.191</title></rect><rect x="188.0" y="45.5" width="13.7" height="36.5" rx="1.5" class="bar"><title>-85° · 0.279</title></rect><rect x="203.7" y="72.0" width="13.7" height="10.0" rx="1.5" class="bar"><title>-75° · 0.077</title></rect><rect x="219.3" y="80.4" width="13.7" height="1.6" rx="1.5" class="bar"><title>-65° · 0.012</title></rect><rect x="235.0" y="81.1" width="13.7" height="0.9" rx="1.5" class="bar"><title>-55° · 0.007</title></rect><rect x="250.7" y="79.9" width="13.7" height="2.1" rx="1.5" class="bar"><title>-45° · 0.016</title></rect><rect x="266.3" y="80.2" width="13.7" height="1.8" rx="1.5" class="bar"><title>-35° · 0.014</title></rect><rect x="282.0" y="80.5" width="13.7" height="1.5" rx="1.5" class="bar"><title>-25° · 0.011</title></rect><rect x="297.7" y="81.1" width="13.7" height="0.9" rx="1.5" class="bar"><title>-15° · 0.006</title></rect><rect x="313.3" y="81.3" width="13.7" height="0.7" rx="1.5" class="bar"><title>-5° · 0.005</title></rect><rect x="329.0" y="81.4" width="13.7" height="0.6" rx="1.5" class="bar"><title>+5° · 0.004</title></rect><rect x="344.7" y="81.4" width="13.7" height="0.6" rx="1.5" class="bar"><title>+15° · 0.005</title></rect><rect x="360.3" y="81.2" width="13.7" height="0.8" rx="1.5" class="bar"><title>+25° · 0.006</title></rect><rect x="376.0" y="81.3" width="13.7" height="0.7" rx="1.5" class="bar"><title>+35° · 0.006</title></rect><rect x="391.7" y="81.2" width="13.7" height="0.8" rx="1.5" class="bar"><title>+45° · 0.006</title></rect><rect x="407.3" y="81.2" width="13.7" height="0.8" rx="1.5" class="bar"><title>+55° · 0.006</title></rect><rect x="423.0" y="81.1" width="13.7" height="0.9" rx="1.5" class="bar"><title>+65° · 0.007</title></rect><rect x="438.7" y="80.9" width="13.7" height="1.1" rx="1.5" class="bar"><title>+75° · 0.008</title></rect><rect x="454.3" y="80.6" width="13.7" height="1.4" rx="1.5" class="bar"><title>+85° · 0.010</title></rect><rect x="470.0" y="80.4" width="13.7" height="1.6" rx="1.5" class="bar"><title>+95° · 0.012</title></rect><rect x="485.7" y="80.5" width="13.7" height="1.5" rx="1.5" class="bar"><title>+105° · 0.012</title></rect><rect x="501.3" y="80.5" width="13.7" height="1.5" rx="1.5" class="bar"><title>+115° · 0.011</title></rect><rect x="517.0" y="79.9" width="13.7" height="2.1" rx="1.5" class="bar"><title>+125° · 0.016</title></rect><rect x="532.7" y="78.0" width="13.7" height="4.0" rx="1.5" class="bar"><title>+135° · 0.030</title></rect><rect x="548.3" y="77.6" width="13.7" height="4.4" rx="1.5" class="bar"><title>+145° · 0.034</title></rect><rect x="564.0" y="79.3" width="13.7" height="2.7" rx="1.5" class="bar"><title>+155° · 0.021</title></rect><rect x="579.7" y="80.6" width="13.7" height="1.4" rx="1.5" class="bar"><title>+165° · 0.011</title></rect><rect x="595.3" y="81.2" width="13.7" height="0.8" rx="1.5" class="bar"><title>+175° · 0.006</title></rect><text x="46.0" y="97" class="ax" text-anchor="middle">-180°</text><text x="187.0" y="97" class="ax" text-anchor="middle">-90°</text><text x="328.0" y="97" class="ax" text-anchor="middle">+0°</text><text x="469.0" y="97" class="ax" text-anchor="middle">+90°</text><text x="610.0" y="97" class="ax" text-anchor="middle">+180°</text></svg>
-        <p class="pn">비공선 세 번째 마이크가 모호성을 깹니다. 단봉이 됩니다. 최빈 -85° (0.28), 2위 -95° (0.19).</p>
+        <p class="pn">분포가 단봉으로 모입니다. 비공선 세 번째 마이크가 모호성을 깼습니다. 최빈 -85° (0.28), 2위 -95° (0.19).</p>
       </div>
       <div class="pan">
         <div class="phd">
@@ -990,7 +990,7 @@ python evaluate.py --pred predictions.jsonl \
           <span class="pv">정답 bin 확률 <b>0.510</b> · NLL <b>0.67</b></span>
         </div>
         <svg viewBox="0 0 620 104" width="100%" role="img" aria-label="마이크 4개일 때의 방위각 확률 분포. 정답 -89도. NLL 0.67"><line x1="46" y1="82.0" x2="610" y2="82.0" class="gl"></line><text x="40" y="85.5" class="ax" text-anchor="end">0.00</text><line x1="46" y1="46.0" x2="610" y2="46.0" class="gl" style="stroke:var(--line)"></line><text x="40" y="49.5" class="ax" text-anchor="end">0.28</text><line x1="46" y1="10.0" x2="610" y2="10.0" class="gl" style="stroke:var(--line)"></line><text x="40" y="13.5" class="ax" text-anchor="end">0.55</text><line x1="194.8" y1="8" x2="194.8" y2="82" class="tl"></line><rect x="47.0" y="81.3" width="13.7" height="0.7" rx="1.5" class="bar"><title>-175° · 0.005</title></rect><rect x="62.7" y="81.3" width="13.7" height="0.7" rx="1.5" class="bar"><title>-165° · 0.005</title></rect><rect x="78.3" y="81.2" width="13.7" height="0.8" rx="1.5" class="bar"><title>-155° · 0.006</title></rect><rect x="94.0" y="81.5" width="13.7" height="0.5" rx="1.5" class="bar"><title>-145° · 0.004</title></rect><rect x="109.7" y="80.5" width="13.7" height="1.5" rx="1.5" class="bar"><title>-135° · 0.011</title></rect><rect x="125.3" y="80.9" width="13.7" height="1.1" rx="1.5" class="bar"><title>-125° · 0.009</title></rect><rect x="141.0" y="79.1" width="13.7" height="2.9" rx="1.5" class="bar"><title>-115° · 0.022</title></rect><rect x="156.7" y="78.1" width="13.7" height="3.9" rx="1.5" class="bar"><title>-105° · 0.030</title></rect><rect x="172.3" y="61.4" width="13.7" height="20.6" rx="1.5" class="bar"><title>-95° · 0.158</title></rect><rect x="188.0" y="15.2" width="13.7" height="66.8" rx="1.5" class="bar"><title>-85° · 0.510</title></rect><rect x="203.7" y="77.4" width="13.7" height="4.6" rx="1.5" class="bar"><title>-75° · 0.035</title></rect><rect x="219.3" y="81.0" width="13.7" height="1.0" rx="1.5" class="bar"><title>-65° · 0.008</title></rect><rect x="235.0" y="81.3" width="13.7" height="0.7" rx="1.5" class="bar"><title>-55° · 0.005</title></rect><rect x="250.7" y="80.9" width="13.7" height="1.1" rx="1.5" class="bar"><title>-45° · 0.008</title></rect><rect x="266.3" y="80.7" width="13.7" height="1.3" rx="1.5" class="bar"><title>-35° · 0.010</title></rect><rect x="282.0" y="80.1" width="13.7" height="1.9" rx="1.5" class="bar"><title>-25° · 0.015</title></rect><rect x="297.7" y="80.4" width="13.7" height="1.6" rx="1.5" class="bar"><title>-15° · 0.012</title></rect><rect x="313.3" y="81.4" width="13.7" height="0.6" rx="1.5" class="bar"><title>-5° · 0.005</title></rect><rect x="329.0" y="81.6" width="13.7" height="0.4" rx="1.5" class="bar"><title>+5° · 0.003</title></rect><rect x="344.7" y="81.4" width="13.7" height="0.6" rx="1.5" class="bar"><title>+15° · 0.004</title></rect><rect x="360.3" y="80.8" width="13.7" height="1.2" rx="1.5" class="bar"><title>+25° · 0.009</title></rect><rect x="376.0" y="81.4" width="13.7" height="0.6" rx="1.5" class="bar"><title>+35° · 0.004</title></rect><rect x="391.7" y="81.4" width="13.7" height="0.6" rx="1.5" class="bar"><title>+45° · 0.005</title></rect><rect x="407.3" y="81.4" width="13.7" height="0.6" rx="1.5" class="bar"><title>+55° · 0.005</title></rect><rect x="423.0" y="81.4" width="13.7" height="0.6" rx="1.5" class="bar"><title>+65° · 0.005</title></rect><rect x="438.7" y="81.0" width="13.7" height="1.0" rx="1.5" class="bar"><title>+75° · 0.007</title></rect><rect x="454.3" y="81.0" width="13.7" height="1.0" rx="1.5" class="bar"><title>+85° · 0.008</title></rect><rect x="470.0" y="81.0" width="13.7" height="1.0" rx="1.5" class="bar"><title>+95° · 0.008</title></rect><rect x="485.7" y="81.0" width="13.7" height="1.0" rx="1.5" class="bar"><title>+105° · 0.007</title></rect><rect x="501.3" y="81.1" width="13.7" height="0.9" rx="1.5" class="bar"><title>+115° · 0.007</title></rect><rect x="517.0" y="80.9" width="13.7" height="1.1" rx="1.5" class="bar"><title>+125° · 0.009</title></rect><rect x="532.7" y="80.2" width="13.7" height="1.8" rx="1.5" class="bar"><title>+135° · 0.014</title></rect><rect x="548.3" y="78.7" width="13.7" height="3.3" rx="1.5" class="bar"><title>+145° · 0.025</title></rect><rect x="564.0" y="80.7" width="13.7" height="1.3" rx="1.5" class="bar"><title>+155° · 0.010</title></rect><rect x="579.7" y="81.1" width="13.7" height="0.9" rx="1.5" class="bar"><title>+165° · 0.007</title></rect><rect x="595.3" y="81.4" width="13.7" height="0.6" rx="1.5" class="bar"><title>+175° · 0.005</title></rect><text x="46.0" y="97" class="ax" text-anchor="middle">-180°</text><text x="187.0" y="97" class="ax" text-anchor="middle">-90°</text><text x="328.0" y="97" class="ax" text-anchor="middle">+0°</text><text x="469.0" y="97" class="ax" text-anchor="middle">+90°</text><text x="610.0" y="97" class="ax" text-anchor="middle">+180°</text></svg>
-        <p class="pn">쌍 6개로 좁아집니다. 정답 bin 하나에 절반이 실립니다. 최빈 -85° (0.51), 2위 -95° (0.16).</p>
+        <p class="pn">쌍 6개로 좁아져 정답 bin 하나에 절반이 실립니다. 최빈 -85° (0.51), 2위 -95° (0.16).</p>
       </div>
     </div>
     <p class="sm muted">세로선이 정답 방위입니다. 막대에 마우스를 올리면 bin 중심과 확률이 보입니다.</p>
@@ -998,7 +998,7 @@ python evaluate.py --pred predictions.jsonl \
 
   <div class="wrap sec">
     <h2>들어보기</h2>
-    <p>같은 구간 2.25~5.25초를 두 가지로 들려드립니다. 8 kHz로 줄였습니다.</p>
+    <p>같은 구간 2.25~5.25초를 8 kHz로 줄여 두 가지로 들려드립니다.</p>
     <div class="g2">
       <div class="card">
         <p class="lab">M = 1</p>
@@ -1014,7 +1014,7 @@ python evaluate.py --pred predictions.jsonl \
       </div>
     </div>
     <div class="note" style="margin-top:14px">
-      마이크 4개에 간격 0.16 m인 배열의 Delay-and-Sum은 이론 어레이 이득이 약 6 dB입니다. 음질 차이는 크지 않고, 이 데모의 요점도 음질이 아니라 <b>같은 신호에서 방위 추정이 86.0°에서 1.86°로 바뀐다</b>는 쪽입니다.
+      마이크 4개에 간격 0.16 m인 배열의 Delay-and-Sum은 이론 어레이 이득이 약 6 dB입니다. 음질 차이는 크지 않습니다. 이 데모의 요점도 음질이 아니라 <b>같은 신호에서 방위 추정이 86.0°에서 1.86°로 바뀐다</b>는 쪽입니다.
     </div>
   </div>
 
@@ -1027,7 +1027,7 @@ python evaluate.py --pred predictions.jsonl \
 <div class="wrap ph">
     <p class="eyebrow">08 / LIMITS</p>
     <h1>Scope &amp; Limits</h1>
-    <p class="lede">결과를 미리 단정하지 않습니다. 한계도 결과에 포함합니다.</p>
+    <p class="lede">결과를 미리 단정하지 않고 한계까지 그대로 싣습니다.</p>
   </div>
 
   <div class="wrap sec">
@@ -1058,26 +1058,26 @@ python evaluate.py --pred predictions.jsonl \
         <figcaption><b class="m">M = 4</b> · bin 23에 0.62<br>단봉이 좁아짐. NLL = <span class="m">0.4780</span></figcaption>
       </figure>
     </div>
-    <p class="sm muted" style="margin-top:12px">세 패널은 공유 y축(p 최대 0.70)과 같은 정답 bin을 씁니다. 구성 규칙을 캡션에 적었으므로 표시된 NLL은 그 입력에 채점 공식을 적용한 계산값입니다. 성능 숫자가 아닙니다.</p>
+    <p class="sm muted" style="margin-top:12px">세 패널은 공유 y축(p 최대 0.70)과 같은 정답 bin을 씁니다. 구성 규칙을 캡션에 적었으므로 표시된 NLL은 그 입력에 채점 공식을 적용한 계산값일 뿐 성능 숫자는 아닙니다.</p>
   </div>
 
   <div class="wrap sec">
     <div class="g2">
       <div class="card">
         <h3>마이크 1개로는 방향을 모릅니다</h3>
-        <p>무지향 마이크 하나에는 방향 단서가 없습니다. 균일 분포가 정직한 출력이고, ACC@10&deg;는 우연 수준이어야 맞습니다.</p>
+        <p>무지향 마이크 하나에는 방향 단서가 없으니 균일 분포가 정직한 출력이며 ACC@10°도 우연 수준이어야 맞습니다.</p>
       </div>
       <div class="card">
         <h3>마이크 2개에는 대칭이 남습니다</h3>
-        <p>두 마이크를 잇는 축 양쪽의 시간차가 같습니다. 양봉 분포를 그대로 제출하고, 대표점은 평균이 아니라 MAP bin 중심을 씁니다.</p>
+        <p>두 마이크를 잇는 축을 기준으로 양쪽 시간차가 같습니다. 양봉 분포는 그대로 제출합니다. 대표점은 평균 대신 MAP bin 중심으로 잡습니다.</p>
       </div>
       <div class="card">
         <h3>거리는 잔향에서 옵니다</h3>
-        <p>음량을 무작위화하면 소구경 배열의 거리 단서는 직접음 대 잔향음 비만 남습니다. 방의 잔향 시간을 거리로 착각하는지 직교 2&times;2로 확인합니다.</p>
+        <p>음량을 무작위화하면 소구경 배열의 거리 단서로는 직접음 대 잔향음 비만 남습니다. 방의 잔향 시간을 거리로 착각하는지는 직교 2×2로 확인합니다.</p>
       </div>
       <div class="card">
-        <h3>관측이 길수록 좋다고 보지 않습니다</h3>
-        <p>상태를 길게 누적하면 화자 전환 직후 이전 위치에 머무는 관성이 생깁니다. 시간 누적만으로 기하학적 대칭도 사라지지 않습니다.</p>
+        <h3>관측이 길어도 늘 유리하지는 않습니다</h3>
+        <p>상태를 길게 누적하면 화자 전환 직후에도 이전 위치에 머무는 관성이 생깁니다. 시간을 누적한다고 기하학적 대칭이 사라지지도 않습니다.</p>
       </div>
     </div>
   </div>
@@ -1085,10 +1085,10 @@ python evaluate.py --pred predictions.jsonl \
   <div class="wrap sec">
     <h2>데이터와 기여의 범위</h2>
     <div class="note">
-      eval-dev는 Image Source Method 시뮬레이션입니다. Unseen Room도 같은 시뮬레이터 안에 있어 일반화 검증으로는 약합니다. 실측 다채널 RIR 기반 분할을 별도 검증 조건으로 추가합니다.
+      eval-dev는 Image Source Method 시뮬레이션이고 Unseen Room도 같은 시뮬레이터 안에 있어서 일반화 검증으로는 약합니다. 실측 다채널 RIR 기반 분할을 별도 검증 조건으로 추가합니다.
     </div>
-    <p style="margin-top:16px">새로운 위치 복원 원리를 제시하지 않습니다. 기여는 재현 가능한 과제 정의와 조건별 성능·한계 분석입니다.</p>
-    <p>중첩 발화는 이번 범위에서 제외했습니다. 중첩이 없는 조건에서 빔포밍의 WER 이득은 크지 않을 수 있고, 그 결과도 그대로 보고합니다.</p>
+    <p style="margin-top:16px">재현 가능한 과제 정의와 조건별 성능·한계 분석이 이 작업의 기여입니다. 새로운 위치 복원 원리를 제시하지는 않았습니다.</p>
+    <p>중첩 발화는 이번 범위에서 제외했습니다. 중첩이 없는 조건이라 빔포밍의 WER 이득은 크지 않을 수도 있습니다. 그 결과도 그대로 보고합니다.</p>
   </div>
 
   <div class="wrap next">
@@ -1113,7 +1113,7 @@ python evaluate.py --pred predictions.jsonl \
           <tr><td><b>Evaluation</b></td><td class="m">evaluate.py<br>spec.py</td><td>공식 채점 코드와 평가 계약 상수</td></tr>
           <tr><td><b>Tests</b></td><td class="m">tests/</td><td>채널 순열 불변성, 마스킹 무결성, 인과성, 평가기 정확성</td></tr>
           <tr><td><b>결정 기록</b></td><td class="m">SPEC_DECISIONS.md</td><td>기획안에 없던 값을 동결한 근거</td></tr>
-            <tr><td><b>재현 노트북</b></td><td class="m">notebooks/<br>reproduce.ipynb</td><td>clone · SHA256 검증 · 채점기 테스트 · 커밋된 숫자 재현까지 GPU 없이</td></tr>
+            <tr><td><b>재현 노트북</b></td><td class="m">notebooks/<br>reproduce.ipynb</td><td>clone, SHA256 검증, 채점기 테스트, 커밋된 숫자 재현까지 GPU 없이</td></tr>
         </tbody>
       </table>
     </div>
@@ -1148,13 +1148,13 @@ python evaluate.py --pred predictions.jsonl \
           <tr><td>LibriSpeech</td><td class="m">CC BY 4.0</td><td>파생 합성 오디오 재배포 시 출처 표기</td></tr>
           <tr><td>pyroomacoustics</td><td class="m">MIT</td><td>&mdash;</td></tr>
           <tr><td class="m">wav2vec2-base-960h</td><td><span class="tbc">확인 필요</span></td><td>체크포인트 카드 확인 후 기재</td></tr>
-          <tr><td class="m">ECAPA-TDNN (SpeechBrain)</td><td><span class="tbc">확인 필요</span></td><td>체크포인트 카드 확인 후 기재</td></tr>
+          <tr><td class="m">ECAPA-TDNN (SpeechBrain)</td><td><span class="tbc">확인 필요</span></td><td>체크포인트 카드를 확인한 뒤 기재</td></tr>
           <tr><td class="m">Silero VAD</td><td><span class="tbc">확인 필요</span></td><td>저장소 라이선스 확인 후 기재</td></tr>
         </tbody>
       </table>
     </div>
     <div class="note" style="margin-top:14px">
-      <b>확인 필요</b> 표기는 아직 원문 라이선스를 대조하지 않은 항목입니다. 모두 추론에 쓰는 모델이고 가중치를 재배포하지는 않습니다. 재배포하는 것은 LibriSpeech 파생 오디오뿐이며, CC BY 4.0 출처 표기는 <span class="m">data/eval-dev/ATTRIBUTION.md</span>에 있습니다.
+      <b>확인 필요</b> 표기는 아직 원문 라이선스를 대조하지 않은 항목입니다. 모두 추론에 쓰는 모델이고 가중치를 재배포하지는 않습니다. 재배포하는 것은 LibriSpeech 파생 오디오뿐이며 CC BY 4.0 출처 표기는 <span class="m">data/eval-dev/ATTRIBUTION.md</span>에 있습니다.
     </div>
   </div>
 
@@ -1168,11 +1168,11 @@ python evaluate.py --pred predictions.jsonl \
       <li>Baevski, Zhou, Mohamed, Auli. <i>wav2vec 2.0: A Framework for Self-Supervised Learning of Speech Representations</i>. NeurIPS 2020.</li>
       <li>Desplanques, Thienpondt, Demuynck. <i>ECAPA-TDNN: Emphasized Channel Attention, Propagation and Aggregation in TDNN Based Speaker Verification</i>. Interspeech 2020.</li>
       <li>LOCATA Challenge &mdash; 음원 위치 추정 벤치마크 <span class="tbc">서지 확인 필요</span></li>
-      <li>CHiME DASR &mdash; 다채널 원거리 음성인식 챌린지 <span class="tbc">서지 확인 필요</span></li>
-      <li>DCASE SELD / STARSS &mdash; 음향 이벤트 위치 추정 <span class="tbc">서지 확인 필요</span></li>
-      <li>BUT Speech@FIT Reverb Database &mdash; 실측 다채널 RIR <span class="tbc">서지 확인 필요</span></li>
+      <li>CHiME DASR, 다채널 원거리 음성인식 챌린지 <span class="tbc">서지 확인 필요</span></li>
+      <li>DCASE SELD / STARSS (음향 이벤트 위치 추정) <span class="tbc">서지 확인 필요</span></li>
+      <li>BUT Speech@FIT Reverb Database · 실측 다채널 RIR <span class="tbc">서지 확인 필요</span></li>
     </ol>
-    <p class="sm muted" style="margin-top:14px">7~10번은 이 과제와 겹치는 선행 벤치마크입니다. 차별점 서술을 위해 서지 정보를 먼저 확인한 뒤 본문에 반영합니다.</p>
+    <p class="sm muted" style="margin-top:14px">7~10번은 이 과제와 겹치는 선행 벤치마크입니다. 차별점을 쓰려고 서지 정보를 먼저 확인한 뒤 본문에 반영합니다.</p>
   </div>
 
   <div class="wrap next">
