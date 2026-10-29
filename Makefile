@@ -64,10 +64,10 @@ BASELINE_ARGS ?=
 
 # doctest 를 돌릴 파일 목록. baselines/*.py 를 빼먹으면 173 개 예제가
 # 조용히 안 돌아간다.
-PY_DOCTEST_FILES = $(wildcard $(EVAL_ENTRY) $(SIM_ENTRY) baselines/*.py)
+PY_DOCTEST_FILES = $(wildcard $(EVAL_ENTRY) $(SIM_ENTRY) baselines/*.py) make_eval_dev.py
 BASELINE_MODS_PRESENT = $(patsubst baselines/%.py,baselines.%,$(filter-out baselines/__init__.py,$(wildcard baselines/*.py)))
 
-.PHONY: help eval-dev eval-dev-verify sim-selftest baseline score test selftest compile clean
+.PHONY: help eval-dev eval-dev-verify sim-selftest baseline score test selftest compile clean distclean
 
 # help: 타깃 목록을 출력한다 (기본 타깃).
 help:
@@ -145,9 +145,18 @@ selftest:
 
 # compile: 저장소의 모든 파이썬 파일을 바이트컴파일한다. 지연 임포트 규칙이 지켜지면 의존성 없이 통과한다.
 compile:
-	$(PY) -m compileall -q spec.py $(wildcard $(EVAL_ENTRY) $(SIM_ENTRY)) $(wildcard baselines/*.py tests/*.py)
+	$(PY) -m compileall -q spec.py make_eval_dev.py $(wildcard $(EVAL_ENTRY) $(SIM_ENTRY)) $(wildcard baselines/*.py tests/*.py)
 
-# clean: git 에 올리지 않는 생성물을 전부 지운다. eval-dev 는 시드로 재생성 가능하다.
+# clean: 임시 산출물만 지운다. 커밋된 eval-dev 는 건드리지 않는다 (distclean 참조).
+# data/eval-dev 는 저장소에 커밋된 공식 평가셋이고 ATTRIBUTION.md 가 그 안에 있다.
+# clean 이 지우면 358 MB 와 CC BY 4.0 표기 의무 파일이 같이 날아간다.
+# 데이터셋을 지우려면 distclean 을 명시적으로 부른다.
 clean:
-	rm -rf $(DATA_DIR) $(PRED) $(SCORES)
+	rm -rf $(PRED) $(SCORES) scores_*.json runs/
 	find . -name '__pycache__' -type d -prune -exec rm -rf {} +
+
+distclean: clean
+	@echo "이 명령은 $(DATA_DIR) 를 통째로 지운다 (커밋된 평가셋 + ATTRIBUTION.md)."
+	@echo "되돌리려면: git checkout -- $(DATA_DIR)   또는   make eval-dev SEED=$(SEED)"
+	@printf '계속하려면 yes 를 입력: ' && read ans && [ "$$ans" = yes ]
+	rm -rf $(DATA_DIR)

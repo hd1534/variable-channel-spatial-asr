@@ -21,7 +21,7 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 
-REPO = Path("/Users/hjh/Ajou Univ./4-1/음성인식/프로젝트/vcsasr")
+REPO = Path(__file__).resolve().parent
 sys.path.insert(0, str(REPO))
 import spec  # noqa: E402
 
@@ -138,7 +138,7 @@ out = {
     "rate": OUT_RATE,
     "clips": clips,
 }
-dest = Path("/private/tmp/claude-501/-Users-hjh-Ajou-Univ--4-1----------"
-            "/f5855940-c29a-47ac-918e-37b2f1aed033/scratchpad/specwork/demo_clips.json")
+dest = REPO / "runs" / "demo_clips.json"
+dest.parent.mkdir(parents=True, exist_ok=True)
 dest.write_text(json.dumps(out), encoding="utf-8")
 print(f"  -> {dest}  ({dest.stat().st_size/1024:.0f} KB)")

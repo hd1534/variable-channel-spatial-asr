@@ -1580,8 +1580,8 @@ def self_test() -> int:
         lines = [json.loads(line) for line in out_path.read_text(encoding="utf-8").splitlines()]
 
     grid = inference_grid_sec()
-    timesteps = [r for r in lines if r["record_type"] == "timestep"]
-    finals = [r for r in lines if r["record_type"] == "final_transcript"]
+    timesteps = [r for r in lines if r["record_type"] == spec.RECORD_TYPE_TIMEPOINT]
+    finals = [r for r in lines if r["record_type"] == spec.RECORD_TYPE_FINAL_TRANSCRIPTS]
     by_mask: dict[str, list[dict[str, Any]]] = {}
     for record in timesteps:
         by_mask.setdefault(spec.parse_case_id(record["case_id"])[1], []).append(record)
