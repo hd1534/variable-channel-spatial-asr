@@ -46,15 +46,15 @@
     "azimuth_mae_deg": 50.48917339874705,
     "azimuth_acc_10deg": 0.4614656927416903,
     "azimuth_acc_20deg": 0.4985593703732995,
-    "distance_mae_m": 1.6185463573283836,
-    "pos_error_2d_m": 1.9713966102804943,
+    "distance_mae_m": 1.101057143992126,
+    "pos_error_2d_m": 2.0631222912028626,
     "azimuth_nll": 2.31727592831786,
     "distance_nll": 2.0794415416798357,
     "azimuth_coverage_90": 0.9691915499838301,
     "azimuth_interval_width_deg": 246.5081303377894,
     "distance_coverage_90": 1.0,
     "distance_interval_width_m": 4.5,
-    "rtf": 0.021170703987605455
+    "rtf": 0.017571947872056626
   },
   "na_reasons": {
     "cpwer": "N/A by rule: spec.TRACK_UNDEFINED_METRICS[1] lists 'cpwer'"
@@ -76,15 +76,15 @@
       "azimuth_mae_deg": 50.48917339874705,
       "azimuth_acc_10deg": 0.4614656927416903,
       "azimuth_acc_20deg": 0.4985593703732995,
-      "distance_mae_m": 1.6185463573283836,
-      "pos_error_2d_m": 1.9713966102804943,
+      "distance_mae_m": 1.101057143992126,
+      "pos_error_2d_m": 2.0631222912028626,
       "azimuth_nll": 2.31727592831786,
       "distance_nll": 2.0794415416798357,
       "azimuth_coverage_90": 0.9691915499838301,
       "azimuth_interval_width_deg": 246.5081303377894,
       "distance_coverage_90": 1.0,
       "distance_interval_width_m": 4.5,
-      "rtf": 0.021170703987605455
+      "rtf": 0.017571947872056626
     },
     "na_reasons": {
       "cpwer": "N/A by rule: spec.TRACK_UNDEFINED_METRICS[1] lists 'cpwer'"
@@ -13063,15 +13063,15 @@
           "azimuth_mae_deg": 90.20512784127249,
           "azimuth_acc_10deg": 0.08333333333333333,
           "azimuth_acc_20deg": 0.09722222222222222,
-          "distance_mae_m": 1.6185463573283836,
-          "pos_error_2d_m": 2.2648481693029514,
+          "distance_mae_m": 1.101057143992126,
+          "pos_error_2d_m": 2.809981278173581,
           "azimuth_nll": 3.58351893845611,
           "distance_nll": 2.0794415416798357,
           "azimuth_coverage_90": 0.9166666666666666,
           "azimuth_interval_width_deg": 330.0,
           "distance_coverage_90": 1.0,
           "distance_interval_width_m": 4.5,
-          "rtf": 0.017261593027071993
+          "rtf": 0.013855885678786864
         }
       },
       "1000": {
@@ -13083,15 +13083,15 @@
           "azimuth_mae_deg": 90.20512784127249,
           "azimuth_acc_10deg": 0.08333333333333333,
           "azimuth_acc_20deg": 0.09722222222222222,
-          "distance_mae_m": 1.6185463573283836,
-          "pos_error_2d_m": 2.2648481693029514,
+          "distance_mae_m": 1.101057143992126,
+          "pos_error_2d_m": 2.809981278173581,
           "azimuth_nll": 3.58351893845611,
           "distance_nll": 2.0794415416798357,
           "azimuth_coverage_90": 0.9166666666666666,
           "azimuth_interval_width_deg": 330.0,
           "distance_coverage_90": 1.0,
           "distance_interval_width_m": 4.5,
-          "rtf": 0.01741012432048592
+          "rtf": 0.014696673772217157
         }
       },
       "1010": {
@@ -13103,15 +13103,15 @@
           "azimuth_mae_deg": 51.8307109872563,
           "azimuth_acc_10deg": 0.43015333440701214,
           "azimuth_acc_20deg": 0.4656419751393179,
-          "distance_mae_m": 1.6185463573283836,
-          "pos_error_2d_m": 1.9844788442613914,
+          "distance_mae_m": 1.101057143992126,
+          "pos_error_2d_m": 2.120408756322556,
           "azimuth_nll": 1.9066073448398524,
           "distance_nll": 2.0794415416798357,
           "azimuth_coverage_90": 0.99827396542118,
           "azimuth_interval_width_deg": 208.11650834915528,
           "distance_coverage_90": 1.0,
           "distance_interval_width_m": 4.5,
-          "rtf": 0.02057923838157573
+          "rtf": 0.017068539789281405
         }
       },
       "1100": {
@@ -13123,15 +13123,15 @@
           "azimuth_mae_deg": 54.413748120959276,
           "azimuth_acc_10deg": 0.36218673188454914,
           "azimuth_acc_20deg": 0.4714860951697466,
-          "distance_mae_m": 1.6185463573283836,
-          "pos_error_2d_m": 1.9907828845563482,
+          "distance_mae_m": 1.101057143992126,
+          "pos_error_2d_m": 2.1289703286354733,
           "azimuth_nll": 2.3182060456908733,
           "distance_nll": 2.0794415416798357,
           "azimuth_coverage_90": 0.98614646257084,
           "azimuth_interval_width_deg": 219.23991837868562,
           "distance_coverage_90": 1.0,
           "distance_interval_width_m": 4.5,
-          "rtf": 0.021028282362835347
+          "rtf": 0.01731763409896606
         }
       },
       "1110": {
@@ -13143,15 +13143,15 @@
           "azimuth_mae_deg": 9.507460280047189,
           "azimuth_acc_10deg": 0.89187431717609,
           "azimuth_acc_20deg": 0.9231446978030883,
-          "distance_mae_m": 1.6185463573283836,
-          "pos_error_2d_m": 1.6704151715630684,
+          "distance_mae_m": 1.101057143992126,
+          "pos_error_2d_m": 1.283064066903731,
           "azimuth_nll": 1.381389163432643,
           "distance_nll": 2.0794415416798357,
           "azimuth_coverage_90": 0.9983505470665912,
           "azimuth_interval_width_deg": 201.77467109092717,
           "distance_coverage_90": 1.0,
           "distance_interval_width_m": 4.5,
-          "rtf": 0.023594271368746273
+          "rtf": 0.01965198645902496
         }
       },
       "1111": {
@@ -13163,15 +13163,15 @@
           "azimuth_mae_deg": 6.772865321674516,
           "azimuth_acc_10deg": 0.9179131063158237,
           "azimuth_acc_20deg": 0.9366390096832,
-          "distance_mae_m": 1.6185463573283836,
-          "pos_error_2d_m": 1.653006422696255,
+          "distance_mae_m": 1.101057143992126,
+          "pos_error_2d_m": 1.2263280390082527,
           "azimuth_nll": 1.1304151390315693,
           "distance_nll": 2.0794415416798357,
           "azimuth_coverage_90": 0.9990449915110357,
           "azimuth_interval_width_deg": 189.91768420796828,
           "distance_coverage_90": 1.0,
           "distance_interval_width_m": 4.5,
-          "rtf": 0.02715071446491745
+          "rtf": 0.02284096743406331
         }
       }
     },
@@ -13185,15 +13185,15 @@
           "azimuth_mae_deg": 90.20512784127249,
           "azimuth_acc_10deg": 0.08333333333333333,
           "azimuth_acc_20deg": 0.09722222222222222,
-          "distance_mae_m": 1.6185463573283836,
-          "pos_error_2d_m": 2.2648481693029514,
+          "distance_mae_m": 1.101057143992126,
+          "pos_error_2d_m": 2.809981278173581,
           "azimuth_nll": 3.58351893845611,
           "distance_nll": 2.0794415416798357,
           "azimuth_coverage_90": 0.9166666666666666,
           "azimuth_interval_width_deg": 330.0,
           "distance_coverage_90": 1.0,
           "distance_interval_width_m": 4.5,
-          "rtf": 0.017335858673778955
+          "rtf": 0.01427627972550201
         }
       },
       "2": {
@@ -13205,15 +13205,15 @@
           "azimuth_mae_deg": 53.12222955410779,
           "azimuth_acc_10deg": 0.39617003314578064,
           "azimuth_acc_20deg": 0.46856403515453227,
-          "distance_mae_m": 1.6185463573283836,
-          "pos_error_2d_m": 1.9876308644088698,
+          "distance_mae_m": 1.101057143992126,
+          "pos_error_2d_m": 2.1246895424790146,
           "azimuth_nll": 2.112406695265363,
           "distance_nll": 2.0794415416798357,
           "azimuth_coverage_90": 0.9922102139960098,
           "azimuth_interval_width_deg": 213.67821336392046,
           "distance_coverage_90": 1.0,
           "distance_interval_width_m": 4.5,
-          "rtf": 0.020803760372205538
+          "rtf": 0.017193086944123734
         }
       },
       "3": {
@@ -13225,15 +13225,15 @@
           "azimuth_mae_deg": 9.507460280047189,
           "azimuth_acc_10deg": 0.89187431717609,
           "azimuth_acc_20deg": 0.9231446978030883,
-          "distance_mae_m": 1.6185463573283836,
-          "pos_error_2d_m": 1.6704151715630684,
+          "distance_mae_m": 1.101057143992126,
+          "pos_error_2d_m": 1.283064066903731,
           "azimuth_nll": 1.381389163432643,
           "distance_nll": 2.0794415416798357,
           "azimuth_coverage_90": 0.9983505470665912,
           "azimuth_interval_width_deg": 201.77467109092717,
           "distance_coverage_90": 1.0,
           "distance_interval_width_m": 4.5,
-          "rtf": 0.023594271368746273
+          "rtf": 0.01965198645902496
         }
       },
       "4": {
@@ -13245,15 +13245,15 @@
           "azimuth_mae_deg": 6.772865321674516,
           "azimuth_acc_10deg": 0.9179131063158237,
           "azimuth_acc_20deg": 0.9366390096832,
-          "distance_mae_m": 1.6185463573283836,
-          "pos_error_2d_m": 1.653006422696255,
+          "distance_mae_m": 1.101057143992126,
+          "pos_error_2d_m": 1.2263280390082527,
           "azimuth_nll": 1.1304151390315693,
           "distance_nll": 2.0794415416798357,
           "azimuth_coverage_90": 0.9990449915110357,
           "azimuth_interval_width_deg": 189.91768420796828,
           "distance_coverage_90": 1.0,
           "distance_interval_width_m": 4.5,
-          "rtf": 0.02715071446491745
+          "rtf": 0.02284096743406331
         }
       }
     }
@@ -13276,15 +13276,15 @@
         "azimuth_mae_deg": 50.48917339874705,
         "azimuth_acc_10deg": 0.4614656927416903,
         "azimuth_acc_20deg": 0.4985593703732995,
-        "distance_mae_m": 1.6185463573283836,
-        "pos_error_2d_m": 1.9713966102804943,
+        "distance_mae_m": 1.101057143992126,
+        "pos_error_2d_m": 2.0631222912028626,
         "azimuth_nll": 2.31727592831786,
         "distance_nll": 2.0794415416798357,
         "azimuth_coverage_90": 0.9691915499838301,
         "azimuth_interval_width_deg": 246.5081303377894,
         "distance_coverage_90": 1.0,
         "distance_interval_width_m": 4.5,
-        "rtf": 0.021170703987605455
+        "rtf": 0.017571947872056626
       },
       "na_reasons": {
         "cpwer": "N/A by rule: spec.TRACK_UNDEFINED_METRICS[1] lists 'cpwer'"

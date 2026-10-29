@@ -95,6 +95,7 @@ from baselines import (
     load_audio,
     load_distance_model,
     map_point,
+    median_point,
     normalise_distribution,
     pair_spacings_m,
     resolve_masks,
@@ -902,7 +903,7 @@ def predict_case(
                     ),
                     decimals=prob_decimals,
                 )
-                distance_point = map_point(distance_probs, distance_centers())
+                distance_point = median_point(distance_probs, distance_centers())
             records.append(
                 build_timestep_record(
                     case_id=case.case_id,

@@ -88,6 +88,7 @@ __all__ = [
     "load_audio",
     "load_distance_model",
     "map_point",
+    "median_point",
     "normalise_distribution",
     "pair_spacings_m",
     "resolve_scope",
@@ -523,6 +524,8 @@ def map_point(
     The evaluator falls back to this when a record omits an explicit point, but
     the baselines submit the point explicitly, so this is also used to keep the
     submitted point and the submitted distribution consistent by construction.
+    Azimuth uses it.  Distance does not -- ``Dist MAE`` is an L1 metric, so the
+    representative there is the median; see :func:`median_point`.
 
     >>> map_point([0.1, 0.9], (1.0, 2.0))
     2.0
@@ -533,6 +536,64 @@ def map_point(
         raise ValueError(f"length mismatch: {len(probs)} probs vs {len(centers)} centers")
     best = max(range(len(probs)), key=lambda i: (probs[i], -i))
     return float(centers[best])
+
+
+MEDIAN_TIE_TOLERANCE: Final[float] = 1e-9
+"""Cumulative mass within this of 0.5 counts as landing exactly on the median.
+
+A uniform distribution over an even number of bins hits 0.5 exactly in binary
+floating point (1/8 is representable, and four of them sum to 0.5), so the tie
+branch of :func:`median_point` is reached exactly, not approximately.
+"""
+
+
+def median_point(
+    probs: Sequence[float],
+    centers: Sequence[float],
+) -> float:
+    """Return the weighted median of ``probs`` over an ordered grid.
+
+    ``Dist MAE`` is an L1 metric and the L1-optimal representative of a
+    distribution is its median, not its mode.  The difference is not academic
+    here.  A model that has learned nothing about distance answers uniform over
+    the eight bins; :func:`map_point` breaks that all-way tie toward the low
+    index and so returns the first bin centre, 0.5916 m, which scores 1.6185 m.
+    The median of the same uniform distribution is 1.9052 m and scores
+    1.1011 m.  Reporting the first number as the uninformed floor overstates
+    the headroom on distance by almost half.
+
+    This is only meaningful on an ordered, non-circular grid, which is why
+    azimuth keeps :func:`map_point`: the azimuth grid wraps, and at ``M = 2``
+    the posterior is genuinely bimodal, where a median -- like a circular mean
+    -- would land between the two modes on empty probability.
+
+    When the cumulative mass lands exactly on 0.5 every point between the two
+    neighbouring centres is equally L1-optimal, and the midpoint is taken.
+
+    >>> median_point([0.1, 0.9], (1.0, 2.0))
+    2.0
+    >>> median_point([0.5, 0.5], (1.0, 2.0))  # exact tie -> interval midpoint
+    1.5
+    >>> median_point([1.0, 0.0], (1.0, 2.0))
+    1.0
+    >>> uniform = [0.125] * 8
+    >>> round(median_point(uniform, spec.DISTANCE_BIN_CENTERS_M), 4)
+    1.9052
+    """
+    if len(probs) != len(centers):
+        raise ValueError(f"length mismatch: {len(probs)} probs vs {len(centers)} centers")
+    total = math.fsum(probs)
+    if total <= 0.0:
+        raise ValueError("probabilities sum to zero; cannot take a median")
+    cumulative = 0.0
+    for index, probability in enumerate(probs):
+        cumulative += probability / total
+        if abs(cumulative - 0.5) <= MEDIAN_TIE_TOLERANCE:
+            following = min(index + 1, len(centers) - 1)
+            return float((centers[index] + centers[following]) / 2.0)
+        if cumulative > 0.5:
+            return float(centers[index])
+    return float(centers[-1])
 
 
 # ---------------------------------------------------------------------------
@@ -1378,7 +1439,7 @@ class DistanceModel:
             for coef, value in zip(self.coefficients[:-1], features):
                 acc += coef * value
             return float(min(high, max(low, math.exp(acc))))
-        return map_point(self.predict_distribution(features), distance_centers())
+        return median_point(self.predict_distribution(features), distance_centers())
 
     def to_json(self) -> dict[str, Any]:
         """Serialise the model for ``--save-distance-model``."""

@@ -83,6 +83,7 @@ from baselines import (
     load_audio,
     load_distance_model,
     map_point,
+    median_point,
     normalise_distribution,
     resolve_masks,
     resolve_scope,
@@ -195,7 +196,7 @@ def distance_prediction(
             model.predict_distribution([0.0] * max(1, len(model.feature_names))),
             decimals=prob_decimals,
         )
-        return probs, map_point(probs, distance_centers())
+        return probs, median_point(probs, distance_centers())
     features = level_features(mono)
     probs = normalise_distribution(
         model.predict_distribution(features), decimals=prob_decimals
