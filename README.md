@@ -16,7 +16,7 @@
 
 ## 현재 상태 (2026-10-29)
 
-**정직하게**: 이 저장소는 기획안 v1.7 기준으로 **평가 기반만 올라간 상태**다.
+**정직하게**: 평가 기반과 공식 eval-dev, 통제 베이스라인 2종 실측까지 올라갔다. 제안 모델(Recipe 1)은 아직 학습하지 않았다.
 
 아래 "통과"·"막혀 있음" 은 모두 2026-10-29 에 **실제로 실행해서** 확인한 결과다.
 
@@ -27,36 +27,33 @@
 | 세션 설계·합성 라이브러리 `simulate.py` | 올라감. 라이브러리 + 자체점검 |
 | eval-dev 생성기 `make_eval_dev.py` | 올라감. 데이터셋을 쓰는 엔트리포인트는 이쪽이다 |
 | 베이스라인 1·2 (학습 불필요, 추론 전용) | 올라감. `baselines.single_channel`, `baselines.dsp_srp_phat` |
-| `make test` | **통과.** doctest 5개 파일 + `tests/` 유닛테스트 100개 |
+| `make test` | **통과.** doctest + `tests/` 유닛테스트 153개 |
 | `make selftest` | **통과.** simulate 불변식 + 베이스라인 1·2 종단 자체점검 |
-| `make eval-dev` | **통과.** 오프라인 합성 경로로 4세션(24케이스) 생성 확인 |
-| `make baseline` | **막혀 있음.** `meta.jsonl` 의 `audio` 스키마 불일치 |
-| `make score` | **통과.** 생성된 정답 24케이스를 실제로 채점해 `scores.json` 생성 확인 |
+| `make eval-dev` | **통과.** 공식 경로(pyroomacoustics + LibriSpeech)로 144세션(864케이스) 생성, `official: true` |
+| `make baseline` | **통과.** 864케이스 추론 완료 (동결 ASR `wav2vec2-base-960h`) |
+| `make score` | **통과.** 864케이스 채점, 결과는 `results/baseline1.json`·`baseline2.json` |
 | **Recipe 1 모델 학습** | **미실시** |
-| **리더보드 전 지표** | **미측정.** 아래 표의 모든 칸이 비어 있다 |
+| **리더보드** | 통제 베이스라인 2종 **측정 완료.** 제안 모델과 외부 대조군은 비어 있다 |
 | Track 2 (이동·다중 화자) | 범위 외. 12/7 이후 증분 |
 | Unseen Room 일반화 | 범위 외 |
 
-즉 **지금 이 저장소에 점수는 하나도 없다.** README나 발표자료에 숫자를 적으면
-그건 측정값이 아니다.
+즉 **지금 저장소에 있는 숫자는 전부 실측값이다.** `make eval-dev` -> `make baseline`
+-> `make score` 가 864케이스에 대해 한 바퀴 돌았고, 결과는 `results/` 에 커밋되어
+있다. 공식 채점기가 `breakdown.by_n_channels` 로 채널 수별 분해도 함께 내므로
+리더보드 보조 표는 손으로 집계하지 않는다.
 
-점수가 처음 생기려면 `make eval-dev` -> `make baseline` -> `make score` 가 한 번
-돌아야 한다. **생성과 채점은 돌고, 중간의 추론 한 칸이 막혀 있다.** 빈 제출
-파일로 `make score` 를 돌리면 24케이스 전부에 R-MISS 페널티가 붙은 `scores.json`
-이 나오므로(`azimuth_mae_deg = 180.0`, `cpwer = N/A by rule`), 채점 경로 자체는
-정답 데이터에 대해 확인된 상태다.
+아직 비어 있는 것:
 
-남은 블로커 하나:
+- **Recipe 1 (TAC + GRU)** -- 제안 모델. 청크 상태 초기화 대 전달 비교가 주 실험이고
+  12/7 까지 학습한다. 리더보드의 `Ours` 두 행이 이 자리다.
+- **External Reference** -- `Qwen3-ASR-1.7B` 를 단일 채널로 돌려 참고 비교표에 둔다.
+  통제 베이스라인과는 ASR 자체가 다르므로 같은 표에 넣지 않는다.
+- **Track 2** -- 2인 교대 발화. `spec.MAX_SPEAKERS_PER_TRACK[2] = 2` 와
+  `MULTI_SPEAKER_WER_CONCAT_ORDER` 는 계약에 있지만 생성기와 베이스라인에는 없다.
 
-- `make baseline` -- 생성기는 `meta.jsonl` 의 `audio` 를 **객체**로 쓰는데
-  (`{"path": "audio/sess_0000.wav", "sample_rate_hz": 16000, ...}`) 베이스라인
-  로더는 그 값을 **경로 문자열**로 읽는다. 그래서
-  `data/eval-dev/{'channels_in_file': 4, ...}` 를 열려다 `FileNotFoundError` 가
-  난다. `spec.py` 에 per-case 매니페스트 스키마가 아직 없어서 생긴 불일치이고
-  (제출·정답 레코드 스키마는 v0.2.0에서 동결됐다),
-  CLI 로는 우회할 수 없다 -- 두 모듈 중 한쪽을 맞춰야 한다.
-
-진단과 고쳐야 할 쪽은 `SPEC_DECISIONS.md` 14절 2항에 적어 두었다.
+남은 계약 공백은 `SPEC_DECISIONS.md` 14절에 있다. per-case 매니페스트 스키마와
+eval-dev 디렉터리 파일명 둘인데, 배포 데이터셋을 읽는 방법이지 제출이 지킬 규칙은
+아니라서 채점에는 영향이 없다.
 
 학습이 필요한 모델은 이번 회차에 **없다.** 베이스라인 1·2는 둘 다 추론 전용이므로
 GPU 없이, 체크포인트 다운로드 없이도 파이프라인 전체가 한 번 돈다(베이스라인 1의 동결
@@ -128,7 +125,7 @@ make selftest          # 종단 불변식까지. 통과 확인됨 (합성 오디
 
 # 4) eval-dev 합성 -> 베이스라인 추론 -> 채점
 make eval-dev          # data/eval-dev/ 에 audio/ + ground_truth.jsonl + meta.jsonl
-make baseline          # predictions.jsonl   <- 지금 audio 스키마 불일치로 막혀 있다
+make baseline          # predictions.jsonl
 make score             # scores.json
 ```
 
@@ -145,7 +142,7 @@ make eval-dev-verify N_SESSIONS=4   # 렌더링 없이 불변식만 (numpy 불�
 지금 확실히 통과하는 것은 아래 다섯 개다 (전부 실행해서 확인).
 
 ```bash
-make test              # doctest 5개 파일 + tests/ 유닛테스트 100개
+make test              # doctest 5개 파일 + tests/ 유닛테스트 153개
 make selftest          # 베이스라인 1·2 를 합성 세션에 대해 종단 실행
 make sim-selftest      # simulate.py 의 plan-layer 불변식만
 make eval-dev N_SESSIONS=4 EVAL_DEV_ARGS="--synthetic --rir-engine fallback_ism"
@@ -187,23 +184,21 @@ make score             # 빈 제출 파일이어도 R-MISS 페널티로 scores.j
 `spec.py`로 실제 검증한 값이다 -- `azimuth_probs` 길이 36, `distance_probs` 길이 8,
 두 벡터 모두 합이 정확히 1.0이다.
 
-### 레코드 1: `spatial_frame` -- 그리드 시점 하나의 공간·화자 예측
+### 레코드 1: `timepoint` -- 그리드 시점 하나의 공간·화자 예측
 
 케이스당 80개, 세션당 480개 (마스크 6개). 가독성을 위해 아래는 들여쓰기해 두었지만
 실제 파일에서는 **한 줄**이다.
 
 ```json
 {
-  "record_type": "spatial_frame",
+  "record_type": "timepoint",
   "case_id": "sess_0001__m1010",
-  "observation_mode": "causal",
   "eval_time_sec": 7.25,
-  "speaker_id": "s0",
-  "speech_active": true,
+  "pred_speaker": "s0",
   "azimuth_probs": [0.000294, 0.000294, 0.000294, 0.000294, 0.000294, 0.000294, 0.000294, 0.000294, 0.000294, 0.00031, 0.000757, 0.006822, 0.043523, 0.134681, 0.196431, 0.134681, 0.043534, 0.00717, 0.005653, 0.032731, 0.101084, 0.147394, 0.101084, 0.032716, 0.00519, 0.000641, 0.000306, 0.000294, 0.000294, 0.000294, 0.000294, 0.000294, 0.000294, 0.000294, 0.000294, 0.000294],
   "distance_probs": [0.023962, 0.095004, 0.226493, 0.303436, 0.226493, 0.095004, 0.023962, 0.005646],
-  "azimuth_point_deg": -36.1,
-  "distance_point_m": 1.79
+  "pred_azimuth_deg": -36.1,
+  "pred_distance_m": 1.79
 }
 ```
 
@@ -229,20 +224,18 @@ make score             # 빈 제출 파일이어도 R-MISS 페널티로 scores.j
 
 ### 필드 사양
 
-`spatial_frame`:
+`timepoint`:
 
 | 필드명 | 타입 | 필수 | 단위 | 채점 대상 지표 | 누락 시 동작 |
 |---|---|---|---|---|---|
-| `record_type` | string = `"spatial_frame"` | 권장 | - | - | `azimuth_probs` 유무로 추론. 모호하면 거부 |
+| `record_type` | string = `"timepoint"` | 권장 | - | - | `eval_time_sec` 유무로 추론. 모호하면 거부. 옛 철자 `"timestep"`도 읽는다 (`spec.RECORD_TYPE_ALIASES`) |
 | `case_id` | string `<session_id>__m<mask_bits>` (`spec.make_case_id`) | 필수 | - | 모든 지표의 1차 키 | 레코드 거부 (스키마 오류) |
-| `observation_mode` | string, `spec.OBSERVATION_MODES` 중 하나 | 필수 | - | 보고 범위 분리 (`causal`만 공식) | 레코드 거부. 기본값으로 `causal`을 가정하지 않는다 |
 | `eval_time_sec` | float, `k * spec.DELTA_T_SEC` (0.25의 정수배) | 필수 | 초, 원점은 세션 첫 샘플 (`spec.TIME_ORIGIN`) | 모든 공간·화자 지표의 2차 키 | 레코드 거부 |
-| `speaker_id` | string (세션 내 익명 슬롯, Track 1은 `spec.MAX_SPEAKERS_PER_TRACK[1]` = 1개) | 필수 | - | `speaker_attribution_accuracy` | `spec.PENALTY_SPEAKER_CORRECT` = `False` (오답 처리) |
-| `speech_active` | bool | 선택 | - | 채점하지 않음 (`T_eval`은 정답 기준으로 고른다) | 무시 |
-| `azimuth_probs` | array[`spec.K_AZIMUTH`=36] of float | 필수 | 확률, 합 1 (`spec.PROB_SUM_TOLERANCE`=1e-4) | `azimuth_nll`, `azimuth_coverage_90`, `azimuth_interval_width_deg` | `spec.PENALTY_NLL` ≈ 27.631 + `spec.PENALTY_AZIMUTH_DEG` = 180.0 |
-| `distance_probs` | array[`spec.K_DISTANCE`=8] of float | 필수 | 확률, 합 1 | `distance_nll`, `distance_coverage_90`, `distance_interval_width_m` | `spec.PENALTY_NLL` + `spec.PENALTY_DISTANCE_M` = 5.0 |
-| `azimuth_point_deg` | float, `[-180, 180)` | 선택 | 도 | `azimuth_mae_deg`, `azimuth_acc_10deg`, `azimuth_acc_20deg`, `pos_error_2d_m` | MAP 빈의 `spec.AZIMUTH_BIN_CENTERS_DEG` 값을 대표점으로 사용 (R-PT). 거부하지 않는다 |
-| `distance_point_m` | float, `[0.5, 5.0]` | 선택 | m | `distance_mae_m`, `pos_error_2d_m` | MAP 빈의 `spec.DISTANCE_BIN_CENTERS_M` (기하 중심) 사용 (R-PT) |
+| `pred_speaker` | string (세션 내 익명 슬롯, Track 1은 `spec.MAX_SPEAKERS_PER_TRACK[1]` = 1개). `speaker_id`·`speaker`도 읽는다 | 선택 | - | `speaker_attribution_accuracy` | `spec.PENALTY_SPEAKER_CORRECT` = `False` (오답 처리) |
+| `azimuth_probs` | array[`spec.K_AZIMUTH`=36] of float | 선택 | 확률, 합 1 (`spec.PROB_SUM_TOLERANCE`=1e-4) | `azimuth_nll`, `azimuth_coverage_90`, `azimuth_interval_width_deg` | `spec.PENALTY_NLL` ≈ 27.631 + `spec.PENALTY_AZIMUTH_DEG` = 180.0 |
+| `distance_probs` | array[`spec.K_DISTANCE`=8] of float | 선택 | 확률, 합 1 | `distance_nll`, `distance_coverage_90`, `distance_interval_width_m` | `spec.PENALTY_NLL` + `spec.PENALTY_DISTANCE_M` = 5.0 |
+| `pred_azimuth_deg` | float, `[-180, 180)` | 선택 | 도 | `azimuth_mae_deg`, `azimuth_acc_10deg`, `azimuth_acc_20deg`, `pos_error_2d_m` | MAP 빈의 `spec.AZIMUTH_BIN_CENTERS_DEG` 값을 대표점으로 사용 (R-PT). 거부하지 않는다 |
+| `pred_distance_m` | float, `[0.5, 5.0]` | 선택 | m | `distance_mae_m`, `pos_error_2d_m` | MAP 빈의 `spec.DISTANCE_BIN_CENTERS_M` (기하 중심) 사용 (R-PT) |
 
 `final_transcripts`:
 
@@ -254,7 +247,7 @@ make score             # 빈 제출 파일이어도 R-MISS 페널티로 scores.j
 | `final_transcripts` | object `{speaker_id: string}`, 키 수 <= `spec.MAX_SPEAKERS_PER_TRACK[track]` | 필수 | - | `wer` (`spec.WER_AGGREGATION` = micro_global), `cpwer` | `spec.MISSING_TRANSCRIPT_POLICY` = `count_all_deletions`: 참조 단어 전부를 삭제 오류로 센다. 케이스를 드롭하지 않는다 |
 | `rtf` | float (무차원, 연산시간/오디오시간) | 권장 | 배수 | `rtf` | 리더보드의 `rtf`를 N/A로 남긴다 (0으로 채우지 않는다) |
 
-**케이스당 레코드 수**: `spatial_frame` 80개 + `final_transcripts` 1개.
+**케이스당 레코드 수**: `timepoint` 80개 + `final_transcripts` 1개.
 세션당 `(80 + 1) x 6 = 486`개.
 
 **필드명의 출처**: 전부 `spec.py`다 (`F_*` 상수, `FIELD_ALIASES`, `REQUIRED_FIELDS`,

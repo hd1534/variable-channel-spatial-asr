@@ -257,11 +257,11 @@ v0.2.0에서 **블로커를 포함해 11건을 닫았다.** 남은 둘은 제출
 
 **계약 공백이 아니라 미측정인 것** (혼동 방지):
 
-- **WER은 한 번도 측정되지 않았다.** `transformers` 미설치로 동결 ASR을 돌린 적이 없고,
-  보고된 WER 1.0은 전부 `--synthetic-asr` 자리표시값이다. 레코드에
-  `wer_reportable=false`로 박혀 있다.
-- **공식 eval-dev가 없다.** 현재 생성 가능한 세트는 `official: false`이고 차단 사유가
-  4개다 (fallback ISM / 합성 음성 / 방위 라벨 2-36빈 / 거리 라벨 2-8빈). 엄격한 층화에는
-  `--n-sessions 144`가 필요하다.
+- **WER은 실측됐다.** 동결 ASR `wav2vec2-base-960h` 로 864케이스를 전사했고
+  B1 0.2680 / B2 0.2541 이다. (2026-10-29 이전 기록에 있던 `--synthetic-asr`
+  자리표시값 1.0 은 더 이상 유효하지 않다.)
+- **공식 eval-dev가 생성됐다.** 144세션 / 864케이스, pyroomacoustics + LibriSpeech
+  dev-clean, 시드 20261029, `official: true` 에 차단 사유 0건. 방위 36/36 bin ·
+  거리 8/8 bin 이 strict_uniform 이라 사전분포 암기 이득이 0.000 nats 다.
 - **Track 2는 구현되지 않았다.** `MAX_SPEAKERS_PER_TRACK[2] = 2`와
   `MULTI_SPEAKER_WER_CONCAT_ORDER`는 계약에 있지만 생성기와 베이스라인에는 없다.

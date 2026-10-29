@@ -283,7 +283,9 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--brand);outline-offs
 #leaderboard .ctl{display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin-bottom:14px}
 #leaderboard .ctl .cl{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.09em;color:var(--faint);text-transform:uppercase}
 #leaderboard .seg{font-family:'JetBrains Mono',monospace;font-size:12px;padding:5px 11px;border:1px solid var(--line);background:var(--bg);color:var(--muted);cursor:pointer}
-#leaderboard .seg[aria-pressed="true"]{background:var(--brand-fill);border-color:var(--brand-fill);color:var(--on-brand)}
+#leaderboard .seg.on{background:var(--brand-fill);border-color:var(--brand-fill);color:var(--on-brand)}
+#leaderboard .tab.off{color:var(--faint);background:var(--surf)}
+#leaderboard .tab[aria-current="true"]{background:var(--bg);color:var(--brand);margin-bottom:-1px;border-bottom:1px solid var(--bg)}
 #leaderboard table{border-collapse:collapse;width:100%;font-size:13.5px}
 #leaderboard th,#leaderboard td{border-bottom:1px solid var(--line);padding:9px 11px;text-align:left;vertical-align:top}
 #leaderboard th{font-size:11px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;color:var(--muted);background:var(--surf2)}
@@ -558,7 +560,7 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--brand);outline-offs
       <div class="card">
         <p class="lab">BASELINE 1</p>
         <h3>Single Channel + Frozen ASR</h3>
-        <p>활성 채널 중 최저 인덱스 하나만 씁니다. 방위각은 균일 분포, 거리는 에너지 기반 회귀.</p>
+        <p>활성 채널 중 최저 인덱스 하나만 씁니다. 방위각은 균일 분포입니다. 거리 회귀는 코드에 있지만 학습 분할을 아직 만들지 않아 이번 실측은 균일 폴백으로 돌았습니다.</p>
         <span class="tag">학습 불필요</span>
       </div>
       <div class="card">
@@ -846,7 +848,7 @@ python evaluate.py --pred predictions.jsonl \
     <p style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
       <a class="btn" href="https://colab.research.google.com/github/hd1534/variable-channel-spatial-asr/blob/main/notebooks/reproduce.ipynb">Colab 에서 재현 &#8599;</a>
     </p>
-    <p class="xs muted">clone부터 SHA256 검증, 테스트 147개, 커밋된 숫자 재현까지 무료 CPU 런타임에서 돕니다.</p>
+    <p class="xs muted">clone부터 SHA256 검증, 테스트 153개, 커밋된 숫자 재현까지 무료 CPU 런타임에서 돕니다.</p>
   </div>
 
   <div class="wrap sec" style="padding-top:0">
@@ -863,23 +865,19 @@ python evaluate.py --pred predictions.jsonl \
       <span class="muted" style="margin-left:auto">측정 완료 <b class="m">2</b> / 5 시스템</span>
     </div>
 
-    <div class="tabs" role="tablist" aria-label="관측 범위">
-      <button type="button" class="tab" role="tab" aria-selected="true">Causal &middot; 0 s</button>
-      <button type="button" class="tab" role="tab" aria-selected="false">Windowed &middot; W s</button>
-      <button type="button" class="tab" role="tab" aria-selected="false">Full-Audio</button>
+    <div class="tabs" aria-label="관측 범위">
+      <span class="tab" aria-current="true">Causal &middot; 0 s &mdash; 공식</span>
+      <span class="tab off">Windowed &middot; W 미정</span>
+      <span class="tab off">Full-Audio &middot; 제출 없음</span>
     </div>
 
     <div class="pane">
       <div class="ctl">
-        <span class="cl">Track</span>
-        <button type="button" class="seg" aria-pressed="true">1</button>
-        <button type="button" class="seg" aria-pressed="false">2</button>
-        <span class="cl" style="margin-left:10px">Mask</span>
-        <button type="button" class="seg" aria-pressed="true">M=1</button>
-        <button type="button" class="seg" aria-pressed="false">M=2</button>
-        <button type="button" class="seg" aria-pressed="false">M=3</button>
-        <button type="button" class="seg" aria-pressed="false">M=4</button>
-        <span class="xs muted m" style="margin-left:auto">case_id = sess_001__m1010</span>
+        <span class="cl">범위</span>
+        <span class="seg on">Track 1</span>
+        <span class="seg on">마스크 6개 전체</span>
+        <span class="seg on">864 케이스</span>
+        <span class="xs muted m" style="margin-left:auto">예: case_id = sess_0008__m1010</span>
       </div>
 
       <div class="scroll" style="border:none">
@@ -929,17 +927,17 @@ python evaluate.py --pred predictions.jsonl \
 
     <div class="scroll mtab">
       <table>
-        <caption>Controlled Baseline 2 · 채널 수별 방위각 (같은 모델, 입력 채널만 다름)</caption>
+        <caption>Controlled Baseline 2 · 채널 수별 방위각 (같은 모델, 입력 채널만 다름). 집계는 위 표와 같은 <span class="m">macro_per_case</span>이고 여섯 마스크 평균이 전체 점수 50.49°와 맞습니다</caption>
         <thead><tr><th style="width:16%">마이크 수</th><th style="text-align:right">Azimuth MAE &darr;</th><th style="text-align:right">Acc@10° &uarr;</th><th style="text-align:right">Azimuth NLL &darr;</th><th>해석</th></tr></thead>
         <tbody>
-          <tr><td class="m">M = 1</td><td class="num flr">85.45°</td><td class="num flr">0.126</td><td class="num flr">3.584</td><td>방향 정보 없음. 균일 분포</td></tr>
-          <tr><td class="m">M = 2</td><td class="num">55.84°</td><td class="num">0.367</td><td class="num">2.107</td><td>앞뒤 모호. 정답이 양봉이라 점 추정이 불리</td></tr>
-          <tr><td class="m">M = 3</td><td class="num best">7.94°</td><td class="num best">0.903</td><td class="num">1.381</td><td>세 번째 마이크가 공선을 벗어나 모호성을 깸</td></tr>
-          <tr><td class="m">M = 4</td><td class="num best">6.49°</td><td class="num best">0.918</td><td class="num best">1.142</td><td>쌍 6개로 잡음 평균화</td></tr>
+          <tr><td class="m">M = 1</td><td class="num flr">90.21°</td><td class="num flr">0.083</td><td class="num flr">3.584</td><td>방향 정보 없음. 균일 분포라 Baseline 1과 같은 값</td></tr>
+          <tr><td class="m">M = 2</td><td class="num">53.12°</td><td class="num">0.396</td><td class="num">2.112</td><td>앞뒤 모호. 정답이 양봉이라 점 추정이 불리</td></tr>
+          <tr><td class="m">M = 3</td><td class="num best">9.51°</td><td class="num best">0.892</td><td class="num">1.381</td><td>세 번째 마이크가 공선을 벗어나 모호성을 깸</td></tr>
+          <tr><td class="m">M = 4</td><td class="num best">6.77°</td><td class="num best">0.918</td><td class="num best">1.130</td><td>쌍 6개로 잡음 평균화</td></tr>
         </tbody>
       </table>
     </div>
-    <p class="sm muted" style="margin-top:12px">이 과제의 핵심 구간은 M=2에서 M=3 사이입니다. 마이크 2개는 두 마이크를 잇는 축 양쪽의 시간차가 같아 앞뒤를 구분하지 못하는데 NLL은 이미 2.107로 균일(3.584)보다 크게 낮으면서 MAE만 55.84°로 높게 나옵니다. 그래서 위치를 분포 형태로 제출받습니다.</p>
+    <p class="sm muted" style="margin-top:12px">이 과제의 핵심 구간은 M=2에서 M=3 사이입니다. 마이크 2개는 두 마이크를 잇는 축 양쪽의 시간차가 같아 앞뒤를 구분하지 못하는데 NLL은 이미 2.112로 균일(3.584)보다 크게 낮으면서 MAE만 53.12°로 높게 나옵니다. 그래서 위치를 분포 형태로 제출받습니다.</p>
 
     <p class="sm muted" style="margin-top:16px">관측 범위가 다른 모델은 표를 나눠 싣습니다. 단위가 다른 지표를 합산한 종합 점수는 어디에도 없습니다. RTF는 측정 기기가 다르면 비교가 성립하지 않으므로 같은 환경에서 잰 값만 한 표에 모읍니다.</p>
   </div>
@@ -1134,7 +1132,7 @@ python evaluate.py --pred predictions.jsonl \
       </div>
       <div class="card">
         <h3>실행 환경</h3>
-        <p><span class="m">evaluate.py</span>는 표준 라이브러리와 numpy만 씁니다. numpy를 막아도 테스트 147개가 전부 통과합니다. 데이터 생성과 베이스라인은 <span class="m">requirements.txt</span>에 버전을 고정했습니다.</p>
+        <p><span class="m">evaluate.py</span>는 표준 라이브러리와 numpy만 씁니다. numpy를 막아도 테스트 153개가 전부 통과합니다. 데이터 생성과 베이스라인은 <span class="m">requirements.txt</span>에 버전을 고정했습니다.</p>
       </div>
     </div>
   </div>
@@ -1182,7 +1180,7 @@ python evaluate.py --pred predictions.jsonl \
 </main>
 
 <footer class="sitefoot"><div class="wrap">
-  <span class="xs muted">Variable-Channel Spatial ASR · 기획안 v1.7 · 전 지표 미측정</span>
+  <span class="xs muted">Variable-Channel Spatial ASR · 기획안 v1.7 · 통제 베이스라인 2종 측정 완료</span>
   <span class="xs muted m">황재현 · 202126887 · Ajou University 2026</span>
 </div></footer>
 
