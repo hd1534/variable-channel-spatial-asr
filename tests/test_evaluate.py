@@ -857,7 +857,9 @@ class TestObservationScopes(EvaluatorTestCase):
             [
                 pred_transcripts(CASE, observation_mode="causal", rtf=0.5),
                 point_prediction(),
-                pred_transcripts(CASE_B, observation_mode="windowed", rtf=1.5),
+                pred_transcripts(
+                    CASE_B, observation_mode="windowed", rtf=1.5, lookahead_sec=0.25
+                ),
                 point_prediction(case_id=CASE_B),
             ],
         )
@@ -1395,9 +1397,68 @@ class TestLiftedConventions(EvaluatorTestCase):
         self.assertIn(evaluate.METRIC_RTF, spec.OFFICIAL_METRICS)
 
     def test_a_windowed_submission_must_declare_its_lookahead(self) -> None:
+        """The contract said so; this checks the evaluator actually enforces it."""
         self.assertTrue(spec.WINDOWED_REQUIRES_LOOKAHEAD)
         self.assertNotIn("windowed", spec.OFFICIAL_SCOPES)
         self.assertIn("windowed", spec.OBSERVATION_MODES)
+        with self.assertRaises(evaluate.SubmissionError) as caught:
+            self.score(
+                [gt_transcripts(), gt_timepoint()],
+                [pred_transcripts(observation_mode="windowed"), point_prediction()],
+            )
+        self.assertIn(spec.F_LOOKAHEAD_SEC, str(caught.exception))
+
+    def test_a_windowed_submission_passes_with_its_lookahead(self) -> None:
+        for where in ({"lookahead_sec": 0.25}, {"meta": {"lookahead_sec": 0.25}}):
+            report = self.score(
+                [gt_transcripts(), gt_timepoint()],
+                [pred_transcripts(observation_mode="windowed", **where), point_prediction()],
+            )
+            self.assertEqual(report["scopes"]["windowed"]["n_cases"], 1)
+
+    def test_a_split_cartesian_pair_is_rejected(self) -> None:
+        record = {
+            spec.F_RECORD_TYPE: spec.RECORD_TYPE_TIMEPOINT,
+            spec.F_CASE_ID: CASE,
+            spec.F_EVAL_TIME: 0.0,
+            spec.F_PRED_X_M: 1.0,
+        }
+        _, pred_path = self.write_pair([], [record])
+        with self.assertRaises(evaluate.SubmissionError) as caught:
+            evaluate.load_predictions(pred_path, track=1)
+        self.assertTrue(str(caught.exception).startswith(evaluate.RULE_POSITION_HALF))
+
+    def test_polar_and_cartesian_must_agree(self) -> None:
+        """Otherwise the azimuth metrics and the 2-D metric score different points."""
+        self.assertEqual(spec.POSITION_RESOLUTION, "polar_first")
+        base = {
+            spec.F_RECORD_TYPE: spec.RECORD_TYPE_TIMEPOINT,
+            spec.F_CASE_ID: CASE,
+            spec.F_EVAL_TIME: 0.0,
+            spec.F_PRED_AZIMUTH_DEG: 0.0,
+            spec.F_PRED_DISTANCE_M: 1.0,
+        }
+        ok = {**base, spec.F_PRED_X_M: 1.0, spec.F_PRED_Y_M: 0.0}
+        _, path = self.write_pair([], [ok])
+        self.assertEqual(len(evaluate.load_predictions(path, track=1).points[CASE]), 1)
+
+        bad = {**base, spec.F_PRED_X_M: 0.0, spec.F_PRED_Y_M: 1.0}
+        _, path = self.write_pair([], [bad])
+        with self.assertRaises(evaluate.SubmissionError) as caught:
+            evaluate.load_predictions(path, track=1)
+        self.assertTrue(str(caught.exception).startswith(evaluate.RULE_POSITION_DISAGREE))
+
+    def test_the_breakdown_reproduces_the_headline(self) -> None:
+        """A per-mask row must come from the same rules as the overall score."""
+        gt = [gt_transcripts(), gt_timepoint()]
+        report = self.score(gt, [pred_transcripts(), point_prediction()])
+        bk = report["breakdown"]
+        self.assertEqual(set(bk), {"by_mask", "by_n_channels"})
+        mask = spec.parse_case_id(CASE)[1]
+        self.assertEqual(
+            bk["by_mask"][mask]["metrics"][evaluate.METRIC_AZ_MAE],
+            report["metrics"][evaluate.METRIC_AZ_MAE],
+        )
 
 
 class TestScoresCarryNoProvenance(EvaluatorTestCase):

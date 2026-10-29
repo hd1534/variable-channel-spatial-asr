@@ -127,6 +127,8 @@ RULE_PROB_LENGTH: Final[str] = _rule("R-PROB-01")
 RULE_PROB_SUM: Final[str] = _rule("R-PROB-02")
 RULE_PROB_VALUE: Final[str] = _rule("R-PROB-03")
 RULE_SPEAKER_COUNT: Final[str] = _rule("R-SPK-01")
+RULE_POSITION_HALF: Final[str] = _rule("R-POS-01")
+RULE_POSITION_DISAGREE: Final[str] = _rule("R-POS-02")
 
 
 class SubmissionError(ValueError):
@@ -257,6 +259,8 @@ def _check_contract_alignment() -> None:
         raise RuntimeError(
             f"unsupported tie-break key: {spec.PERMUTATION_LEXICOGRAPHIC_KEY!r}"
         )
+    if spec.POSITION_RESOLUTION != "polar_first":
+        raise RuntimeError(f"unsupported position order: {spec.POSITION_RESOLUTION!r}")
     if spec.NUMBER_WORDS_LANGUAGE != "en":
         raise RuntimeError("the number-word table in this file is English only")
     if not spec.SPEAKER_LABELS_ARE_OPAQUE:
@@ -960,7 +964,11 @@ def _read_position(obj: Mapping[str, Any], where: str) -> tuple[float | None, fl
     distance = _optional_float(obj, "distance_m", where)
     x_m = _optional_float(obj, "x_m", where)
     y_m = _optional_float(obj, "y_m", where)
-    if azimuth is None and distance is None and x_m is not None and y_m is not None:
+    if (x_m is None) != (y_m is None):
+        _reject(RULE_POSITION_HALF, f"{where}: a cartesian position needs both x and y")
+    if x_m is not None and azimuth is not None and distance is not None:
+        _check_position_agreement(distance, azimuth, x_m, y_m, where)
+    if azimuth is None and distance is None and x_m is not None:
         distance, azimuth = xy_to_polar(x_m, y_m)
     return (None if azimuth is None else wrap_azimuth_deg(azimuth)), distance
 
@@ -1129,6 +1137,19 @@ def load_predictions(path: Path, track: int) -> Predictions:
                     RULE_PARSE,
                     f"{where}: observation_mode {mode!r} not in {spec.OBSERVATION_MODES}",
                 )
+            if mode == "windowed" and spec.WINDOWED_REQUIRES_LOOKAHEAD:
+                # W 를 모르면 windowed 제출끼리도 순위를 매길 수 없다.
+                # meta 안에 적는 베이스라인도 있으므로 양쪽을 본다.
+                meta = obj.get("meta")
+                look = _optional_float(obj, spec.F_LOOKAHEAD_SEC, where)
+                if look is None and isinstance(meta, Mapping):
+                    look = _optional_float(meta, spec.F_LOOKAHEAD_SEC, where)
+                if look is None:
+                    _reject(
+                        RULE_PARSE,
+                        f"{where}: observation_mode 'windowed' needs "
+                        f"{spec.F_LOOKAHEAD_SEC!r} (spec.WINDOWED_REQUIRES_LOOKAHEAD)",
+                    )
             preds.observation_modes[case_id] = str(mode)
             rtf = _optional_float(obj, METRIC_RTF, where)
             if rtf is None:
@@ -1162,13 +1183,21 @@ def load_predictions(path: Path, track: int) -> Predictions:
             distance_probs = validate_prob_vector(
                 obj["distance_probs"], spec.K_DISTANCE, where=f"{where} distance_probs"
             )
+        pred_az = _optional_float(obj, spec.F_PRED_AZIMUTH_DEG, where)
+        pred_r = _optional_float(obj, spec.F_PRED_DISTANCE_M, where)
+        pred_x = _optional_float(obj, spec.F_PRED_X_M, where)
+        pred_y = _optional_float(obj, spec.F_PRED_Y_M, where)
+        if (pred_x is None) != (pred_y is None):
+            _reject(RULE_POSITION_HALF, f"{where}: a cartesian position needs both x and y")
+        if pred_x is not None and pred_az is not None and pred_r is not None:
+            _check_position_agreement(pred_r, pred_az, pred_x, pred_y, where)
         bucket[key] = PredPoint(
             case_id=case_id,
             eval_time_sec=eval_time,
-            azimuth_deg=_optional_float(obj, "pred_azimuth_deg", where),
-            distance_m=_optional_float(obj, "pred_distance_m", where),
-            x_m=_optional_float(obj, "pred_x_m", where),
-            y_m=_optional_float(obj, "pred_y_m", where),
+            azimuth_deg=pred_az,
+            distance_m=pred_r,
+            x_m=pred_x,
+            y_m=pred_y,
             azimuth_probs=azimuth_probs,
             distance_probs=distance_probs,
             speaker=_pred_speaker(obj, where),
@@ -1202,6 +1231,27 @@ SOURCE_EXPLICIT_POLAR: Final[str] = "explicit_polar"
 SOURCE_EXPLICIT_CARTESIAN: Final[str] = "explicit_cartesian"
 SOURCE_MAP_BIN: Final[str] = "map_bin_center"
 SOURCE_MISSING: Final[str] = "missing"
+
+
+def _check_position_agreement(
+    distance: float, azimuth_deg: float, x_m: float, y_m: float, where: str
+) -> None:
+    """Reject a record whose polar and cartesian spellings are different points.
+
+    >>> _check_position_agreement(1.0, 0.0, 1.0, 0.0, "t")
+    >>> _check_position_agreement(1.0, 0.0, 0.0, 1.0, "t")
+    Traceback (most recent call last):
+        ...
+    evaluate.SubmissionError: R-POS-02: t: polar (1.0 m, 0.0 deg) and cartesian (0.0, 1.0) differ by 1.414214 m
+    """
+    px, py = polar_to_xy(distance, azimuth_deg)
+    gap = math.hypot(px - x_m, py - y_m)
+    if gap > spec.POSITION_CONSISTENCY_TOLERANCE_M:
+        _reject(
+            RULE_POSITION_DISAGREE,
+            f"{where}: polar ({distance} m, {azimuth_deg} deg) and cartesian "
+            f"({x_m}, {y_m}) differ by {gap:.6f} m",
+        )
 
 
 def _cartesian(point: PredPoint) -> tuple[float, float] | None:
@@ -1249,18 +1299,19 @@ def resolve_distance_m(point: PredPoint | None) -> tuple[float | None, str]:
 def resolve_xy(point: PredPoint | None) -> tuple[tuple[float, float] | None, str]:
     """Resolve the 2-D representative point.
 
-    An explicit cartesian pair is used verbatim; otherwise the resolved polar
-    pair is converted, so a point-only polar submission and a distribution-only
-    submission both get a well-defined 2-D error.
+    Follows :data:`spec.POSITION_RESOLUTION`, the same order the azimuth and
+    distance resolvers use, so every metric scores one point.  A record that
+    carries both spellings was already rejected at parse time unless they agree,
+    so the order only decides which arithmetic path is taken, never which point.
     """
     if point is None:
         return None, SOURCE_MISSING
-    cartesian = _cartesian(point)
-    if cartesian is not None:
-        return cartesian, SOURCE_EXPLICIT_CARTESIAN
     azimuth, azimuth_source = resolve_azimuth_deg(point)
     distance, distance_source = resolve_distance_m(point)
     if azimuth is None or distance is None:
+        cartesian = _cartesian(point)
+        if cartesian is not None:
+            return cartesian, SOURCE_EXPLICIT_CARTESIAN
         return None, SOURCE_MISSING
     source = (
         SOURCE_MAP_BIN
@@ -1709,6 +1760,7 @@ def score(truth: GroundTruth, preds: Predictions, track: int) -> dict[str, Any]:
         case_id for case_id in case_ids if _scope_of_case(preds, case_id) in spec.OFFICIAL_SCOPES
     ]
     official = _score_scope(track, official_cases, truth, preds)
+    breakdown = _breakdown(track, official_cases, truth, preds)
     scopes = {
         mode: _score_scope(track, scope_cases, truth, preds)
         for mode, scope_cases in sorted(by_scope.items())
@@ -1749,6 +1801,7 @@ def score(truth: GroundTruth, preds: Predictions, track: int) -> dict[str, Any]:
         "metrics": official["metrics"],
         "na_reasons": official["na_reasons"],
         "official": official,
+        "breakdown": breakdown,
         "scopes": scopes,
         "diagnostics": {
             "numpy_available": HAS_NUMPY,
@@ -1756,6 +1809,38 @@ def score(truth: GroundTruth, preds: Predictions, track: int) -> dict[str, Any]:
             "unknown_case_ids": unknown_cases,
             "cases_missing_transcripts": missing_transcripts,
         },
+    }
+
+
+def _breakdown(
+    track: int, case_ids: Sequence[str], truth: GroundTruth, preds: Predictions
+) -> dict[str, dict[str, Any]]:
+    """Score the official cases again, grouped by mask and by channel count.
+
+    Each group goes through :func:`_score_scope`, so a breakdown row is produced
+    by the same rules as the headline table -- in particular
+    :data:`spec.SPATIAL_AGGREGATION`.  Recomputing beats dividing the headline
+    numbers: a per-mask figure derived by averaging time steps instead of cases
+    does not reproduce the official score, which is exactly the mistake this
+    output exists to make impossible.
+
+    >>> _breakdown(1, [], GroundTruth(), Predictions())
+    {'by_mask': {}, 'by_n_channels': {}}
+    """
+    groups_mask: dict[str, list[str]] = {}
+    groups_m: dict[int, list[str]] = {}
+    for case_id in case_ids:
+        mask = spec.parse_case_id(case_id)[1]
+        groups_mask.setdefault(mask, []).append(case_id)
+        groups_m.setdefault(len(spec.mask_to_channels(mask)), []).append(case_id)
+
+    def scored(ids: Sequence[str]) -> dict[str, Any]:
+        report = _score_scope(track, list(ids), truth, preds)
+        return {"n_cases": len(ids), "metrics": report["metrics"]}
+
+    return {
+        "by_mask": {m: scored(ids) for m, ids in sorted(groups_mask.items())},
+        "by_n_channels": {str(m): scored(ids) for m, ids in sorted(groups_m.items())},
     }
 
 

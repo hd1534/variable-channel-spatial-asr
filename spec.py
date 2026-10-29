@@ -728,6 +728,7 @@ F_CASE_ID: Final[str] = "case_id"
 F_EVAL_TIME: Final[str] = "eval_time_sec"
 F_OBSERVATION_MODE: Final[str] = "observation_mode"
 F_RTF: Final[str] = "rtf"
+F_LOOKAHEAD_SEC: Final[str] = "lookahead_sec"
 F_FINAL_TRANSCRIPTS: Final[str] = "final_transcripts"
 
 F_AZIMUTH_DEG: Final[str] = "azimuth_deg"
@@ -831,6 +832,20 @@ POSITION_FIELD_GROUPS: Final[dict[str, tuple[tuple[str, ...], ...]]] = {
 rounding asymmetry: a model that regresses ``(x, y)`` directly would otherwise
 have to quantise to polar before submitting.
 """
+
+POSITION_RESOLUTION: Final[Literal["polar_first"]] = "polar_first"
+"""Which group of :data:`POSITION_FIELD_GROUPS` wins when a record carries both.
+
+Polar first, matching the order the groups are declared in.  The order has to be
+one rule for every metric: if the azimuth metrics read the polar pair while the
+2-D metric reads the cartesian pair, a record whose two spellings disagree is
+scored at two different points and neither number means what it says.
+"""
+
+POSITION_CONSISTENCY_TOLERANCE_M: Final[float] = 1e-6
+"""How far the two spellings of one position may differ before the file is
+rejected.  A submission carrying both is asserting they are the same point, so a
+real disagreement is a bug in the writer, not a rounding artefact. [v1.7 gap]"""
 
 OPTIONAL_PREDICTION_FIELDS: Final[tuple[str, ...]] = (
     F_PRED_SPEAKER,
@@ -1039,6 +1054,8 @@ REJECTION_RULES: Final[dict[str, str]] = {
     "R-PROB-02": "a distribution does not sum to 1 within PROB_SUM_TOLERANCE",
     "R-PROB-03": "a distribution holds a value outside [0, 1]",
     "R-SPK-01": "more speaker slots than the track or the permutation cap allows",
+    "R-POS-01": "a position is given as half a cartesian pair",
+    "R-POS-02": "the polar and cartesian spellings of one position disagree",
 }
 """Ids a rejection message must start with, so a participant can look the cause
 up instead of reading the evaluator source.

@@ -13052,6 +13052,212 @@
       }
     }
   },
+  "breakdown": {
+    "by_mask": {
+      "0010": {
+        "n_cases": 144,
+        "metrics": {
+          "wer": 0.26770293609671847,
+          "cpwer": null,
+          "speaker_attribution_accuracy": 1.0,
+          "azimuth_mae_deg": 90.20512784127249,
+          "azimuth_acc_10deg": 0.08333333333333333,
+          "azimuth_acc_20deg": 0.09722222222222222,
+          "distance_mae_m": 1.6185463573283836,
+          "pos_error_2d_m": 2.2648481693029514,
+          "azimuth_nll": 3.58351893845611,
+          "distance_nll": 2.0794415416798357,
+          "azimuth_coverage_90": 0.9166666666666666,
+          "azimuth_interval_width_deg": 330.0,
+          "distance_coverage_90": 1.0,
+          "distance_interval_width_m": 4.5,
+          "rtf": 0.017261593027071993
+        }
+      },
+      "1000": {
+        "n_cases": 144,
+        "metrics": {
+          "wer": 0.26827864133563617,
+          "cpwer": null,
+          "speaker_attribution_accuracy": 1.0,
+          "azimuth_mae_deg": 90.20512784127249,
+          "azimuth_acc_10deg": 0.08333333333333333,
+          "azimuth_acc_20deg": 0.09722222222222222,
+          "distance_mae_m": 1.6185463573283836,
+          "pos_error_2d_m": 2.2648481693029514,
+          "azimuth_nll": 3.58351893845611,
+          "distance_nll": 2.0794415416798357,
+          "azimuth_coverage_90": 0.9166666666666666,
+          "azimuth_interval_width_deg": 330.0,
+          "distance_coverage_90": 1.0,
+          "distance_interval_width_m": 4.5,
+          "rtf": 0.01741012432048592
+        }
+      },
+      "1010": {
+        "n_cases": 144,
+        "metrics": {
+          "wer": 0.24870466321243523,
+          "cpwer": null,
+          "speaker_attribution_accuracy": 1.0,
+          "azimuth_mae_deg": 51.8307109872563,
+          "azimuth_acc_10deg": 0.43015333440701214,
+          "azimuth_acc_20deg": 0.4656419751393179,
+          "distance_mae_m": 1.6185463573283836,
+          "pos_error_2d_m": 1.9844788442613914,
+          "azimuth_nll": 1.9066073448398524,
+          "distance_nll": 2.0794415416798357,
+          "azimuth_coverage_90": 0.99827396542118,
+          "azimuth_interval_width_deg": 208.11650834915528,
+          "distance_coverage_90": 1.0,
+          "distance_interval_width_m": 4.5,
+          "rtf": 0.02057923838157573
+        }
+      },
+      "1100": {
+        "n_cases": 144,
+        "metrics": {
+          "wer": 0.2518710420264824,
+          "cpwer": null,
+          "speaker_attribution_accuracy": 1.0,
+          "azimuth_mae_deg": 54.413748120959276,
+          "azimuth_acc_10deg": 0.36218673188454914,
+          "azimuth_acc_20deg": 0.4714860951697466,
+          "distance_mae_m": 1.6185463573283836,
+          "pos_error_2d_m": 1.9907828845563482,
+          "azimuth_nll": 2.3182060456908733,
+          "distance_nll": 2.0794415416798357,
+          "azimuth_coverage_90": 0.98614646257084,
+          "azimuth_interval_width_deg": 219.23991837868562,
+          "distance_coverage_90": 1.0,
+          "distance_interval_width_m": 4.5,
+          "rtf": 0.021028282362835347
+        }
+      },
+      "1110": {
+        "n_cases": 144,
+        "metrics": {
+          "wer": 0.2452504317789292,
+          "cpwer": null,
+          "speaker_attribution_accuracy": 1.0,
+          "azimuth_mae_deg": 9.507460280047189,
+          "azimuth_acc_10deg": 0.89187431717609,
+          "azimuth_acc_20deg": 0.9231446978030883,
+          "distance_mae_m": 1.6185463573283836,
+          "pos_error_2d_m": 1.6704151715630684,
+          "azimuth_nll": 1.381389163432643,
+          "distance_nll": 2.0794415416798357,
+          "azimuth_coverage_90": 0.9983505470665912,
+          "azimuth_interval_width_deg": 201.77467109092717,
+          "distance_coverage_90": 1.0,
+          "distance_interval_width_m": 4.5,
+          "rtf": 0.023594271368746273
+        }
+      },
+      "1111": {
+        "n_cases": 144,
+        "metrics": {
+          "wer": 0.24265975820379965,
+          "cpwer": null,
+          "speaker_attribution_accuracy": 1.0,
+          "azimuth_mae_deg": 6.772865321674516,
+          "azimuth_acc_10deg": 0.9179131063158237,
+          "azimuth_acc_20deg": 0.9366390096832,
+          "distance_mae_m": 1.6185463573283836,
+          "pos_error_2d_m": 1.653006422696255,
+          "azimuth_nll": 1.1304151390315693,
+          "distance_nll": 2.0794415416798357,
+          "azimuth_coverage_90": 0.9990449915110357,
+          "azimuth_interval_width_deg": 189.91768420796828,
+          "distance_coverage_90": 1.0,
+          "distance_interval_width_m": 4.5,
+          "rtf": 0.02715071446491745
+        }
+      }
+    },
+    "by_n_channels": {
+      "1": {
+        "n_cases": 288,
+        "metrics": {
+          "wer": 0.2679907887161773,
+          "cpwer": null,
+          "speaker_attribution_accuracy": 1.0,
+          "azimuth_mae_deg": 90.20512784127249,
+          "azimuth_acc_10deg": 0.08333333333333333,
+          "azimuth_acc_20deg": 0.09722222222222222,
+          "distance_mae_m": 1.6185463573283836,
+          "pos_error_2d_m": 2.2648481693029514,
+          "azimuth_nll": 3.58351893845611,
+          "distance_nll": 2.0794415416798357,
+          "azimuth_coverage_90": 0.9166666666666666,
+          "azimuth_interval_width_deg": 330.0,
+          "distance_coverage_90": 1.0,
+          "distance_interval_width_m": 4.5,
+          "rtf": 0.017335858673778955
+        }
+      },
+      "2": {
+        "n_cases": 288,
+        "metrics": {
+          "wer": 0.25028785261945885,
+          "cpwer": null,
+          "speaker_attribution_accuracy": 1.0,
+          "azimuth_mae_deg": 53.12222955410779,
+          "azimuth_acc_10deg": 0.39617003314578064,
+          "azimuth_acc_20deg": 0.46856403515453227,
+          "distance_mae_m": 1.6185463573283836,
+          "pos_error_2d_m": 1.9876308644088698,
+          "azimuth_nll": 2.112406695265363,
+          "distance_nll": 2.0794415416798357,
+          "azimuth_coverage_90": 0.9922102139960098,
+          "azimuth_interval_width_deg": 213.67821336392046,
+          "distance_coverage_90": 1.0,
+          "distance_interval_width_m": 4.5,
+          "rtf": 0.020803760372205538
+        }
+      },
+      "3": {
+        "n_cases": 144,
+        "metrics": {
+          "wer": 0.2452504317789292,
+          "cpwer": null,
+          "speaker_attribution_accuracy": 1.0,
+          "azimuth_mae_deg": 9.507460280047189,
+          "azimuth_acc_10deg": 0.89187431717609,
+          "azimuth_acc_20deg": 0.9231446978030883,
+          "distance_mae_m": 1.6185463573283836,
+          "pos_error_2d_m": 1.6704151715630684,
+          "azimuth_nll": 1.381389163432643,
+          "distance_nll": 2.0794415416798357,
+          "azimuth_coverage_90": 0.9983505470665912,
+          "azimuth_interval_width_deg": 201.77467109092717,
+          "distance_coverage_90": 1.0,
+          "distance_interval_width_m": 4.5,
+          "rtf": 0.023594271368746273
+        }
+      },
+      "4": {
+        "n_cases": 144,
+        "metrics": {
+          "wer": 0.24265975820379965,
+          "cpwer": null,
+          "speaker_attribution_accuracy": 1.0,
+          "azimuth_mae_deg": 6.772865321674516,
+          "azimuth_acc_10deg": 0.9179131063158237,
+          "azimuth_acc_20deg": 0.9366390096832,
+          "distance_mae_m": 1.6185463573283836,
+          "pos_error_2d_m": 1.653006422696255,
+          "azimuth_nll": 1.1304151390315693,
+          "distance_nll": 2.0794415416798357,
+          "azimuth_coverage_90": 0.9990449915110357,
+          "azimuth_interval_width_deg": 189.91768420796828,
+          "distance_coverage_90": 1.0,
+          "distance_interval_width_m": 4.5,
+          "rtf": 0.02715071446491745
+        }
+      }
+    }
+  },
   "scopes": {
     "causal": {
       "n_cases": 864,
