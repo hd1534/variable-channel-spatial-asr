@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <title>소개 — Variable-Channel Spatial ASR (VC-SASR)</title>
-<meta name="description" content="1~4개 가변 채널 마이크 입력을 단일 가중치로 처리하여 화자별 전사와 방위각·거리 확률 분포를 동시에 추정하는 공간 음성인식 벤치마크.">
+<meta name="description" content="마이크 수가 늘어날 때 공간 정보를 활용해 음성인식의 화자 구분 능력이 향상되는지 검증하는 가변 채널 공간 음성인식 벤치마크.">
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1551,7 +1551,7 @@ tr.group-row td {
         <div class="hero-header">
           <div class="doc-context">2026 음성인식 챌린지 · 아주대학교</div>
           <h1>Variable-Channel Spatial ASR</h1>
-          <p class="doc-subtitle">가변 채널 마이크 입력에서의 화자별 음성인식 및 음원 위치 분포 추정 벤치마크</p>
+          <p class="doc-subtitle">마이크가 늘어날 때 공간 정보가 음성인식의 화자 구분을 돕는지 검증하는 가변 채널 벤치마크</p>
           <div class="doc-byline">
             <span><strong>제안자</strong> 황재현 (202126887, 아주대학교)</span>
           </div>
@@ -1565,7 +1565,7 @@ tr.group-row td {
 
         <section class="chapter-section" id="ov-main" data-d1-title="벤치마크 개요">
           <div class="subtopic-block">
-            <h2 id="ov-motivation" class="subtopic-h2" data-subtopic="인간 청각(HRTF)과 마이크 배열의 차이">인간 청각(HRTF)과 마이크 배열의 차이</h2>
+            <h2 id="ov-motivation" class="subtopic-h2" data-subtopic="목소리 단서와 공간 단서">목소리 단서와 공간 단서</h2>
             <dl class="spec-strip" aria-label="벤치마크 핵심 수치">
               <div>
                 <dt>입력 채널 부분집합</dt>
@@ -1585,23 +1585,32 @@ tr.group-row td {
               </div>
             </dl>
             <p>
-              사람은 귀가 두 개뿐이지만 앞과 뒤에서 들려오는 소리를 어렵지 않게 구분합니다. 머리에 의한 회절과 비대칭적인 귓바퀴(pinna) 구조가 음원 방향에 따라 고주파 대역의 음색을 미세하게 바꾸는 <strong>머리전달함수(HRTF, Head-Related Transfer Function)</strong> 단서를 만들어 주기 때문입니다. 정면을 향해 듣는 소리와 등 뒤에서 오는 소리가 귀에 도달할 때부터 서로 다른 주파수 특성을 갖게 됩니다.
+              최근 음성인식 시스템은 받아쓰기뿐 아니라 누가 말했는지까지 함께 기록합니다. 이때 화자를 구분하는 근거는 대부분 <strong>목소리의 음향적 특징</strong>, 즉 화자 임베딩입니다. 목소리가 뚜렷이 다른 두 사람은 이 방식만으로도 잘 구분되지만, 성별과 음색이 비슷한 화자, 짧게 주고받는 발화, 잔향이 큰 실내처럼 목소리 특징이 흐려지는 조건에서는 화자를 혼동하기 쉽고, 말하는 사람이 많아질수록 오류도 커집니다.
             </p>
             <p>
-              반면 기기에 내장되는 소형 무지향성 마이크에는 귓바퀴 같은 방향성 스펙트럼 필터가 없습니다. 마이크 1개만으로는 방향 단서를 얻을 수 없고, 마이크가 2개일 때도 두 마이크를 잇는 축 기준으로 앞뒤 도달 시간차(TDOA)가 같아져 <strong>전후방 뒤집힘(front-back ambiguity)</strong>을 물리적으로 구분하지 못합니다. 일직선 밖에 놓인 세 번째 마이크가 더해져야 비로소 거울상 대칭이 깨집니다. <strong>VC-SASR</strong>이 단일 좌표 오차 대신 시점별 <strong>방위각 36-bin · 거리 8-bin 확률 분포</strong>(NLL 및 90% HPD 구간)를 주 출력으로 채점하는 이유도, 채널 수에 따라 달라지는 이러한 기하학적 불확실성을 모델이 제대로 표현하는지 확인하기 위해서입니다.
+              마이크가 여러 개라면 여기에 <strong>공간 정보</strong>를 더할 수 있습니다. 같은 방에서 말하는 사람들은 서로 다른 위치에 있으므로, 마이크 사이의 도달 시간차(TDOA)는 목소리와 무관하게 화자마다 다른 값을 가집니다. 목소리가 비슷해 구분이 어려운 두 사람도 서 있는 방향이 다르면 공간 단서로 가를 수 있다는 뜻입니다. 본 과제는 이 가설을 다음 질문으로 검증합니다. <strong>마이크의 개수가 늘어난다면, 공간적 특성을 활용하여 기존 ASR의 화자 구분 능력이 향상될까?</strong>
             </p>
           </div>
 
           <div class="subtopic-block">
-            <h2 id="ov-ambiguity" class="subtopic-h2" data-subtopic="가변 채널 환경과 거리 추정의 활용 가능성">가변 채널 환경과 거리 추정의 활용 가능성</h2>
+            <h2 id="ov-ambiguity" class="subtopic-h2" data-subtopic="가변 채널 기기와 다화자 회의 환경">가변 채널 기기와 다화자 회의 환경</h2>
             <p>
-              스마트폰, 태블릿, 노트북, 소형 회의 장비 등 일상 기기에는 이미 통화·녹음용 마이크가 2~4개씩 들어가 있습니다. 다만 기기마다 마이크 배치가 다르고, 손으로 기기를 쥐는 위치나 주변 가림, 일부 채널 결손에 따라 실제로 유효한 마이크 개수가 수시로 달라집니다. 마이크 조합마다 별도 모델을 두기 어렵기 때문에, 본 벤치마크는 활성 채널 수(1~4개)와 마이크 상대 좌표만 주어졌을 때 <strong>단일 가중치</strong> 모델 하나로 전사와 공간 추정을 함께 수행하는 조건을 다룹니다.
+              스마트폰, 태블릿, 노트북, 소형 회의 장비 등 일상 기기에는 이미 통화·녹음용 마이크가 2~4개씩 들어가 있습니다. 다만 기기마다 마이크 배치가 다르고, 손으로 기기를 쥐는 위치나 주변 가림, 일부 채널 결손에 따라 실제로 유효한 마이크 개수가 수시로 달라집니다. 마이크 조합마다 별도 모델을 두기 어렵기 때문에, 본 벤치마크는 활성 채널 수(1~4개)와 마이크 상대 좌표만 주어졌을 때 <strong>단일 가중치</strong> 모델 하나로 전사와 화자·공간 추정을 함께 수행하는 조건을 다룹니다.
             </p>
             <p>
-              나아가 방향뿐 아니라 직접음 대 잔향음 에너지 비(DRR) 등을 통해 <strong>음원 거리</strong>까지 함께 추정할 수 있게 되면, 이후 음성인식 파이프라인에서 활용할 수 있는 폭이 넓어집니다. 예를 들어 스마트폰이나 원거리 기기에서 가까운 주 발화자와 멀리 있는 배경 음성을 구분하거나, 거리에 따른 잔향 감쇠 정도를 반영해 빔포밍·전처리를 조정하는 식으로 <strong>추후 원거리 ASR 정확도를 높이는 보조 단서</strong>로 이어질 수 있습니다. 본 벤치마크는 이러한 확장 가능성을 염두에 두고, 반경 5~12 cm 소구경 배열에서 전사와 방위·거리 분포 추정을 하나의 평가 규격으로 묶었습니다.
+              이러한 기기를 회의 테이블 가운데에 놓으면 여러 사람이 한 기기를 둘러싸고 말하는 환경이 됩니다. 참석자마다 기기를 기준으로 한 방향이 다르므로, 기기에 이미 들어 있는 마이크만으로 <strong>누가 말했는지</strong>를 목소리와 공간 두 단서로 함께 판단할 수 있습니다. 별도의 마이크 배열 장비 없이 회의록 자동 작성이나 화자별 자막의 정확도를 높이는 방향으로 이어질 수 있으며, 본 벤치마크는 활성 마이크 수에 따라 이 이득이 어떻게 달라지는지를 측정합니다.
             </p>
           </div>
 
+          <div class="subtopic-block">
+            <h2 id="ov-physics" class="subtopic-h2" data-subtopic="마이크 수에 따라 달라지는 공간 정보">마이크 수에 따라 달라지는 공간 정보</h2>
+            <p>
+              사람은 귀가 두 개뿐이지만 앞과 뒤에서 들려오는 소리를 어렵지 않게 구분합니다. 머리에 의한 회절과 비대칭적인 귓바퀴(pinna) 구조가 음원 방향에 따라 고주파 대역의 음색을 미세하게 바꾸는 <strong>머리전달함수(HRTF, Head-Related Transfer Function)</strong> 단서를 만들어 주기 때문입니다. 반면 기기에 내장되는 소형 무지향성 마이크에는 이런 방향성 필터가 없어, 얻을 수 있는 공간 정보가 마이크의 개수와 배치로 결정됩니다.
+            </p>
+            <p>
+              마이크 1개만으로는 방향 단서를 얻을 수 없고, 마이크가 2개일 때는 두 마이크를 잇는 축 기준으로 앞뒤 도달 시간차가 같아져 <strong>전후방 뒤집힘(front-back ambiguity)</strong>이 생깁니다. 일직선 밖에 놓인 세 번째 마이크가 더해져야 비로소 거울상 대칭이 깨집니다. 다만 화자 구분에는 정확한 방향이 아니라 <strong>두 사람의 공간 신호가 서로 다르기만 하면</strong> 충분합니다. 앞뒤가 뒤집혀도 두 사람의 도달 시간차가 다르면 구분할 수 있으므로, 현재 설계한 2인 세션 72개 기준으로 마이크 2개만으로도 89~94%의 세션에서 두 화자의 도달 시간차가 1샘플 이상 차이 납니다. 방향 추정이 불완전한 조건에서도 화자 구분에는 이득이 있을 것으로 예상하는 근거입니다. VC-SASR이 단일 좌표 대신 시점별 <strong>방위각 36-bin · 거리 8-bin 확률 분포</strong>를 채점하는 것도, 채널 수에 따라 달라지는 이러한 기하학적 불확실성을 모델이 제대로 표현하는지 확인하기 위해서입니다.
+            </p>
+          </div>
           <div class="subtopic-block">
             <h2 id="ov-status" class="subtopic-h2" data-subtopic="공개 산출물 및 진행 현황">공개 산출물 및 진행 현황</h2>
             <div tabindex="0" role="region" aria-labelledby="cap-ov-status" class="table-wrap">
@@ -1618,12 +1627,12 @@ tr.group-row td {
                   <tr>
                     <th scope="row">평가 계약 및 공식 채점기</th>
                     <td><span class="badge badge-accent">구축 완료</span></td>
-                    <td><code>spec.py</code>(<code>v0.2.0</code>) 상수 동결, <code>evaluate.py</code> 공식 채점기 및 164개 단위 테스트 검증 통과</td>
+                    <td><code>spec.py</code>(<code>v0.2.0</code>) 상수 동결, <code>evaluate.py</code> 공식 채점기(다화자 <code>cpWER</code>·화자 순열 매칭 포함) 및 164개 단위 테스트 검증 통과</td>
                   </tr>
                   <tr>
-                    <th scope="row">공개 평가셋 (<code>eval-dev</code>)</th>
+                    <th scope="row">단일 화자 평가셋 (<code>eval-dev</code>)</th>
                     <td><span class="badge badge-accent">배포 완료</span></td>
-                    <td><code>LibriSpeech dev-clean</code> + <code>pyroomacoustics</code> 기반 144세션 × 6마스크 = 864케이스 오디오·라벨·해시 공개</td>
+                    <td><code>LibriSpeech dev-clean</code> + <code>pyroomacoustics</code> 기반 144세션 × 6마스크 = 864케이스. 마이크 수별로 얻을 수 있는 공간 정보의 양을 측정</td>
                   </tr>
                   <tr>
                     <th scope="row">통제 베이스라인 1 · 2</th>
@@ -1631,9 +1640,19 @@ tr.group-row td {
                     <td>단일 채널 선택 및 SRP-PHAT + 지연-합 빔포머의 864케이스 전수 추론 및 리더보드 등재 완료</td>
                   </tr>
                   <tr>
-                    <th scope="row">제안 모델 (TAC + 인과 GRU)</th>
+                    <th scope="row">다화자 평가셋</th>
+                    <td><span class="badge">구축 중</span></td>
+                    <td>같은 방 서로 다른 위치의 화자들이 번갈아 말하는 세션 생성기. 세션 구성과 층화 검증 완료, 화자 수 범위 결정 중</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">목소리 전용 화자 구분 (비교 대상)</th>
+                    <td><span class="badge">구축 예정</span></td>
+                    <td><code>ECAPA-TDNN</code> 동결 화자 임베딩 + 온라인 군집. 공간 정보 없이 목소리만으로 구분하는 기준선</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">제안 모델 (목소리·공간 결합)</th>
                     <td><span class="badge">학습 예정</span></td>
-                    <td>가변 채널 TAC 프론트엔드 및 청크 상태 전달(<code>Chunk-Reset</code> vs <code>Carry-Over</code>) 실험 (기한 2026-12-07)</td>
+                    <td>가변 채널 TAC 공간 특징과 화자 임베딩을 결합하는 인과 GRU 모델, 청크 상태 전달(<code>Chunk-Reset</code> vs <code>Carry-Over</code>) 비교 (기한 2026-12-07)</td>
                   </tr>
                 </tbody>
               </table>
@@ -1648,7 +1667,7 @@ tr.group-row td {
       <div id="task-system" class="tab-panel" role="tabpanel" aria-labelledby="tab-task-system" data-tab-label="과제·시스템" hidden>
         <header class="page-head">
           <h1>과제 정의 및 비교 시스템</h1>
-          <p>가변 채널 입출력 계약과 시간 관측 범위를 정의하고, 동일한 동결 ASR 백엔드 위에서 공간 프론트엔드와 상태 전달만 분리하는 통제 실험 체계를 설명합니다.</p>
+          <p>가변 채널 입출력 계약과 시간 관측 범위를 정의하고, 동일한 동결 ASR 백엔드 위에서 화자 구분에 쓰는 단서(목소리·공간)와 상태 전달만 분리하는 통제 실험 체계를 설명합니다.</p>
         </header>
 
         <!-- Chapter 1 -->
@@ -1684,7 +1703,7 @@ tr.group-row td {
           <div class="subtopic-block">
             <h3 id="task-tracks" class="subtopic-h3" data-subtopic="1.2 트랙 구성 (Track 1 · 2)"><span class="sub-num">1.2</span>트랙 구성</h3>
             <p>
-              화자 구성에 따라 두 개의 트랙을 정의하며, 현재 공개 평가셋(<code>eval-dev</code>)과 실측 리더보드는 <strong>Track 1</strong>을 기준으로 운영됩니다.
+              화자 구성에 따라 두 개의 트랙을 정의합니다. <strong>Track 1</strong>은 화자가 한 명인 조건에서 마이크 수별로 얻을 수 있는 공간 정보의 양을 측정하고, <strong>Track 2</strong>는 여러 화자가 번갈아 말하는 조건에서 그 공간 정보가 실제로 화자 구분을 개선하는지 검증합니다. 현재 공개 평가셋(<code>eval-dev</code>)과 실측 리더보드는 Track 1 결과입니다.
             </p>
             <div tabindex="0" role="region" aria-labelledby="cap-tracks" class="table-wrap">
               <table class="stackable" style="--label-2: '음향·화자 조건'; --label-3: '평가 범위 및 상태';">
@@ -1703,9 +1722,9 @@ tr.group-row td {
                     <td><code>eval-dev</code> 864케이스 공개 및 베이스라인 채점 완료 (<code>cpWER</code>은 규칙상 <code>N/A</code>)</td>
                   </tr>
                   <tr>
-                    <th scope="row">Track 2 <span class="badge">확장 규격</span></th>
-                    <td>세션당 2인 비중첩 교대 발화(turn-taking). 발화 시점마다 활성 화자는 최대 1명.</td>
-                    <td><code>spec.py</code> 채점 계약 동결 완료, 데이터 생성기 및 베이스라인은 후속 단계 예정</td>
+                    <th scope="row">Track 2 <span class="badge">구축 중</span></th>
+                    <td>같은 방 서로 다른 위치의 여러 화자가 번갈아 발화(turn-taking). 발화 시점마다 활성 화자는 최대 1명이며, 2인부터 화자 수를 늘려 가며 검증.</td>
+                    <td>본 과제의 검증 조건. 채점 계약(<code>cpWER</code>·화자 순열 매칭) 구현 완료, 다화자 데이터 생성기 및 화자 구분 베이스라인 구축 중</td>
                   </tr>
                 </tbody>
               </table>
@@ -1759,12 +1778,12 @@ tr.group-row td {
         <!-- Chapter 2 -->
         <section class="chapter-section" id="baseline">
           <h2 id="ch-baseline" class="chapter-h2" data-d1-title="2. 비교 시스템 및 통제 변인"><span class="sec-num">2.</span>비교 시스템 및 통제 변인</h2>
-          <p class="chapter-lead">동일한 동결 ASR 백엔드와 시간 격자 위에서 공간 프론트엔드와 청크 상태 전달의 순수 효과만 대조합니다.</p>
+          <p class="chapter-lead">동일한 동결 ASR 백엔드와 시간 격자 위에서 공간 단서와 청크 상태 전달의 순수 효과만 대조합니다.</p>
 
           <div class="subtopic-block">
             <h3 id="base-systems" class="subtopic-h3" data-subtopic="2.1 비교 시스템 구성"><span class="sub-num">2.1</span>비교 시스템 구성</h3>
             <p>
-              프론트엔드 공간 처리와 청크 간 시간 상태 전달이 만드는 차이를 엄밀히 비교하기 위해, 모든 통제 시스템은 동일한 ASR 백엔드(<code>wav2vec2-base-960h</code>), 관측 범위(<code>causal</code>), 청크 크기(<code>1.0 s</code>) 및 이동 간격(<code>0.25 s</code>)을 공유합니다.
+              공간 단서와 청크 간 시간 상태 전달이 만드는 차이를 엄밀히 비교하기 위해, 모든 통제 시스템은 동일한 ASR 백엔드(<code>wav2vec2-base-960h</code>), 관측 범위(<code>causal</code>), 청크 크기(<code>1.0 s</code>) 및 이동 간격(<code>0.25 s</code>)을 공유합니다.
             </p>
             <div tabindex="0" role="region" aria-labelledby="cap-systems" class="table-wrap">
               <table class="stackable" style="--label-2: '공간·음향 처리 구조'; --label-3: '상태';">
@@ -1788,8 +1807,13 @@ tr.group-row td {
                     <td><span class="badge badge-accent">실측 완료</span><span class="sys-sub">무학습 DSP</span></td>
                   </tr>
                   <tr>
+                    <th scope="row">Voice-only · 목소리 전용 화자 구분<span class="sys-sub"><code>ECAPA-TDNN</code> + 온라인 군집</span></th>
+                    <td>동결 화자 임베딩(<code>speechbrain/spkrec-ecapa-voxceleb</code>)만으로 발화 구간을 화자별로 묶습니다. 공간 정보를 쓰지 않으므로 마이크 수와 무관하게 성능이 일정하며, 공간 단서를 더했을 때의 개선 폭을 재는 기준선입니다.</td>
+                    <td><span class="badge">구축 예정</span><span class="sys-sub">Track 2 비교 대상</span></td>
+                  </tr>
+                  <tr>
                     <th scope="row">Proposed · TAC + GRU<span class="sys-sub"><code>Chunk-Reset</code> / <code>Carry-Over</code></span></th>
-                    <td>채널 수·순서 불변 모듈인 <strong>Transform-Average-Concatenate(TAC)</strong>로 다채널 공간 특징을 통합하고, 동일한 2층 인과적 GRU 위에서 청크마다 은닉 상태를 초기화하는 조건(<code>Chunk-Reset</code>)과 유지하는 조건(<code>Carry-Over</code>)만 대조합니다.</td>
+                    <td>채널 수·순서 불변 모듈인 <strong>Transform-Average-Concatenate(TAC)</strong>로 다채널 공간 특징을 통합하고, 이를 화자 임베딩과 결합해 <strong>목소리와 공간 두 단서로 화자를 구분</strong>합니다. 두 화자의 공간 신호가 뚜렷이 다르면 공간 단서를, 거울상 위치처럼 겹치면 목소리 단서를 더 신뢰하도록 학습하며, 동일한 2층 인과적 GRU 위에서 청크마다 은닉 상태를 초기화하는 조건(<code>Chunk-Reset</code>)과 유지하는 조건(<code>Carry-Over</code>)을 대조합니다.</td>
                     <td><span class="badge">학습 예정</span><span class="sys-sub">마감 2026-12-07</span></td>
                   </tr>
                 </tbody>
@@ -1821,18 +1845,23 @@ tr.group-row td {
                     <td><code>causal</code> 모드 · 청크 길이 <code>1.0 s</code> · 홉 간격 <code>0.25 s</code> (세션당 80 시점)</td>
                   </tr>
                   <tr>
-                    <th scope="row">화자 인코더 (Track 2 확장 시)</th>
+                    <th scope="row">화자 인코더 (목소리 단서)</th>
                     <td>고정 (통제)</td>
                     <td><code>speechbrain/spkrec-ecapa-voxceleb</code> 동결 임베딩 + 온라인 코사인 슬롯 매칭</td>
                   </tr>
                   <tr>
-                    <th scope="row">공간 프론트엔드</th>
+                    <th scope="row">활성 마이크 수</th>
                     <td><strong>독립 변인 1</strong></td>
-                    <td>단일 채널 선택 vs 고전 SRP-PHAT + 지연-합 빔포머 vs 학습 기반 가변 채널 TAC</td>
+                    <td><code>M ∈ {1, 2, 3, 4}</code> (마스크 6종). 본 과제의 핵심 변인으로, 마이크가 늘수록 화자 구분이 개선되는지 확인</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">화자 구분 단서 · 공간 프론트엔드</th>
+                    <td><strong>독립 변인 2</strong></td>
+                    <td>목소리만(<code>ECAPA-TDNN</code>) vs 목소리 + 공간(고전 SRP-PHAT + 지연-합 빔포머 · 학습 기반 가변 채널 TAC)</td>
                   </tr>
                   <tr>
                     <th scope="row">청크 간 상태 전달</th>
-                    <td><strong>독립 변인 2</strong></td>
+                    <td><strong>독립 변인 3</strong></td>
                     <td>동일 GRU 구조 내 청크별 상태 초기화(<code>Chunk-Reset</code>) vs 은닉 상태 전달(<code>Carry-Over</code>)</td>
                   </tr>
                 </tbody>
@@ -2445,7 +2474,7 @@ python evaluate.py --pred results/b2_pred.jsonl --gt data/eval-dev/ground_truth.
               <code>M = 2</code>에서는 배열 축 양쪽 대칭 방향 중 어느 쪽이 미세하게 더 큰 에너지를 얻느냐에 따라 점 추정 오차가 0° 근처와 거울상 각도로 갈리므로 <code>Azimuth MAE</code>가 <code>53.12°</code>에 머뭅니다. 반면 확률 분포 지표인 <code>Azimuth NLL</code>은 이미 <code>3.584</code>에서 <code>2.112</code>로 크게 낮아져 모델이 후보 방향을 두 곳으로 정확히 압축했음을 포착하며, 비공선 세 번째 채널이 들어오는 <code>M = 3</code>에서 대칭성이 깨지며 <code>MAE</code>가 <code>9.51°</code>로 급감합니다.
             </p>
             <p>
-              동시에 지연-합 빔포밍을 거친 전사 오류율(<code>WER</code>) 역시 <code>0.268(M = 1) → 0.250(M = 2) → 0.245(M = 3) → 0.243(M = 4)</code>으로 단조 감소하여, 공간 정위 개선이 원거리 음성인식 성능 향상으로 직접 이어짐을 확인할 수 있습니다.
+              동시에 지연-합 빔포밍을 거친 전사 오류율(<code>WER</code>) 역시 <code>0.268(M = 1) → 0.250(M = 2) → 0.245(M = 3) → 0.243(M = 4)</code>으로 단조 감소하여, 공간 정위 개선이 원거리 음성인식 성능 향상으로 직접 이어짐을 확인할 수 있습니다. 이처럼 마이크 수에 따라 늘어나는 공간 정보를 여러 화자가 섞인 대화에서 <strong>화자 구분</strong>에 활용하는 것이 Track 2의 검증 대상입니다.
             </p>
           </div>
         </section>
@@ -2587,7 +2616,7 @@ python evaluate.py --pred results/b2_pred.jsonl --gt data/eval-dev/ground_truth.
               </div>
               <div class="limit-item">
                 <h4>2. 소구경 배열에서의 원거리 추정 한계</h4>
-                <p>배열 직경(최대 24 cm)에 비해 음원 거리(0.5~5.0 m)가 멀어 구면파 곡률만으로는 거리를 정밀하게 역산하기 어렵고, 세션 공통 이득 무작위화로 절대 음량 단서도 제거되어 있습니다. 결과적으로 학습 모델이 활용할 수 있는 주요 단서는 직접음 대 잔향음 에너지 비(DRR)이며, 실내 흡음률 변화와 거리를 실제로 분리해 내는지를 <code>거리 × RT60</code> 2×2 직교 조건에서 검증합니다.</p>
+                <p>배열 직경(최대 24 cm)에 비해 음원 거리(0.5~5.0 m)가 멀어 구면파 곡률만으로는 거리를 정밀하게 역산하기 어렵고, 세션 공통 이득 무작위화로 절대 음량 단서도 제거되어 있습니다. 결과적으로 학습 모델이 활용할 수 있는 주요 단서는 직접음 대 잔향음 에너지 비(DRR)이며, 실내 흡음률 변화와 거리를 실제로 분리해 내는지를 <code>거리 × RT60</code> 2×2 직교 조건에서 검증합니다. 다만 잔향이 큰 실내에서는 거리에 따른 수신 레벨 변화가 방마다 다른 잔향 편차에 묻혀(거리 2배당 약 −1.8 dB, 방별 편차 약 5.8 dB) 거리 단서가 약하므로, 본 과제는 거리 추정을 주 목표로 두지 않고 마이크 수에 따라 확실히 늘어나는 방위 단서를 화자 구분에 활용하는 데 집중합니다.</p>
               </div>
             </div>
           </div>
