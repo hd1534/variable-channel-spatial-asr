@@ -3,9 +3,15 @@
 
 Usage::
 
-    python3 make_eval_dev.py --out data/eval-dev --n-sessions 12 --seed 20261029
+    python3 make_eval_dev.py --out data/eval-dev-rebuild --n-sessions 144 --seed 20261029 \
+        --librispeech-root <LibriSpeech dev-clean root>
     python3 make_eval_dev.py --out /tmp/smoke --n-sessions 2 --seed 1 --synthetic
     python3 make_eval_dev.py --out /tmp/x --n-sessions 12 --verify-only   # no numpy needed
+
+A directory whose ``manifest.json`` says ``official: true`` -- the committed
+``data/eval-dev`` -- is never written into unless ``--overwrite-official`` is
+given.  Generating there would prune every session file the new plan does not
+list and rewrite the labels and the manifest, replacing the official set.
 
 Outputs, all under ``--out``:
 
@@ -182,7 +188,9 @@ def build_source_pool(
             "utt_id": utt_id,
             "source_meta": {
                 "source": "librispeech",
-                "path": str(path),
+                # <speaker>/<chapter>/<utt>.flac, not the absolute path: the labels
+                # must come out byte-identical wherever the corpus is unpacked.
+                "path": "/".join(Path(path).parts[-3:]),
                 "duration_sec": len(signal) / float(sample_rate_hz),
                 "sample_rate_hz": sample_rate_hz,
                 "split_of_speaker": split_of[speaker],
@@ -409,6 +417,38 @@ def prune_stale_outputs(out_dir: str | Path, session_ids: Iterable[str]) -> list
     return removed
 
 
+def refuse_to_replace_official(out_dir: str | Path) -> None:
+    """Raise ``ValueError`` if ``out_dir`` already holds an official set.
+
+    :func:`generate` prunes the session files its plan does not list and
+    rewrites ``meta.jsonl``, ``ground_truth.jsonl`` and ``manifest.json``, so a
+    smoke run aimed at the committed ``data/eval-dev`` would replace the
+    official set with an unofficial one.  Only a readable ``manifest.json``
+    with ``official: true`` counts; anything else is not protected.
+
+    >>> import tempfile, pathlib
+    >>> with tempfile.TemporaryDirectory() as d:
+    ...     refuse_to_replace_official(d)
+    ...     _ = (pathlib.Path(d) / "manifest.json").write_text('{"official": true}')
+    ...     try:
+    ...         refuse_to_replace_official(d)
+    ...     except ValueError:
+    ...         print("refused")
+    refused
+    """
+    manifest_path = Path(out_dir) / "manifest.json"
+    try:
+        official = json.loads(manifest_path.read_text(encoding="utf-8")).get("official")
+    except (OSError, ValueError, AttributeError):
+        return
+    if official is True:
+        raise ValueError(
+            f"{out_dir} already holds an official eval set (manifest.json official=true); "
+            "generating into it would prune its session files and rewrite its labels. "
+            "Write to a new directory, or pass --overwrite-official to replace it on purpose."
+        )
+
+
 def _finite(values: Iterable[Any]) -> list[float]:
     """Keep only the finite floats in ``values``."""
     out = []
@@ -439,14 +479,18 @@ def generate(
     allow_unbalanced: bool = False,
     masks: Iterable[str] = spec.EVAL_MASKS,
     quiet: bool = False,
+    overwrite_official: bool = False,
 ) -> dict[str, Any]:
     """Generate the whole eval-dev set and return the manifest.
 
     Verification runs *before* any audio is rendered, so a plan that violates
-    an invariant costs nothing.
+    an invariant costs nothing.  An official set already in ``out_dir`` is
+    left alone unless ``overwrite_official`` (:func:`refuse_to_replace_official`).
     """
     masks = tuple(masks)
     out_dir = Path(out_dir)
+    if not overwrite_official:
+        refuse_to_replace_official(out_dir)
     plan = simulate.build_eval_plan(
         n_sessions, seed=seed, masks=masks, allow_unbalanced=allow_unbalanced
     )
@@ -763,6 +807,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="run every plan-layer invariant and exit without rendering audio (needs no numpy)",
     )
     parser.add_argument("--quiet", action="store_true", help="suppress the per-session lines")
+    parser.add_argument(
+        "--overwrite-official",
+        action="store_true",
+        help="allow writing into a directory whose manifest.json says official=true "
+        "(the committed data/eval-dev); refused otherwise",
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -797,6 +847,8 @@ def _run(args: argparse.Namespace) -> int:
         return 0
 
     mode = "synthetic" if args.synthetic else "librispeech"
+    if not args.overwrite_official:
+        refuse_to_replace_official(args.out)
     if not args.quiet:
         print(f"generating {args.n_sessions} sessions into {args.out} (engine={args.rir_engine}, source={mode})")
     manifest = generate(
@@ -810,6 +862,7 @@ def _run(args: argparse.Namespace) -> int:
         rir_store_sec=args.rir_store_sec,
         allow_unbalanced=args.allow_unbalanced,
         quiet=args.quiet,
+        overwrite_official=args.overwrite_official,
     )
     if not args.quiet:
         print_summary(manifest)

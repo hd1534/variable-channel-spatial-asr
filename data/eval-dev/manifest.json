@@ -97,7 +97,7 @@
     "vad_ref_percentile": 90.0,
     "vad_rel_threshold_db": -30.0
   },
-  "created_utc": "2026-10-28T22:05:46+00:00",
+  "created_utc": "2026-10-30T02:15:50+00:00",
   "eval_masks": [
     "1000",
     "0010",
@@ -684,8 +684,8 @@
       "sha256": "ed5045595fa66efbbfcea4a881780e357f8cbb10954b7855b734469e6ad6ba13"
     },
     "ground_truth.jsonl": {
-      "bytes": 5697966,
-      "sha256": "9ffe6bbe7ec16a9c874a0e39fa876cad8186ffe2984826516f6ee46de99ee536"
+      "bytes": 5570094,
+      "sha256": "c9dd6259c3ddad3397c9d32271b1eacdc586c48524ff89eea1574c37fb95d37e"
     },
     "meta.jsonl": {
       "bytes": 608164,

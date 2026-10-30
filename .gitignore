@@ -8,6 +8,9 @@
 # split; committing its labels would defeat the point of holding it out.
 data/**/rir/
 data/eval-test/
+# `make eval-dev` regenerates into this copy, never into data/eval-dev;
+# `make eval-dev-check` compares their audio, labels and meta byte for byte.
+data/eval-dev-rebuild/
 *.flac
 
 # --- submission and scoring artefacts ---------------------------------------
