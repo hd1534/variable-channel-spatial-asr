@@ -1,0 +1,7 @@
+{
+  "name": "smoke_real",
+  "data": {"train_root": "LibriSpeech/dev-clean", "n_rooms_train": 8, "n_rooms_val": 2, "n_val_sessions": 8,
+           "val_n_speakers": [2, 2], "num_workers": 2},
+  "model": {"name": "proposed", "state": "carry"},
+  "train": {"max_steps": 30, "warmup_steps": 5, "val_every": 30, "ckpt_every": 10, "log_every": 5}
+}

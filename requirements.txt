@@ -22,7 +22,9 @@
 # evaluate.py 는 numpy 없이도 돈다 (numpy 배열로 낸 확률 벡터를 받을 때만 numpy 를 쓴다).
 # make test 는 simulate.py 와 baselines/*.py 의 doctest 때문에 numpy 가 필요하다.
 # torch / transformers / pyroomacoustics 없이도 `make score` 와 `make test` 가
-# 통과해야 한다 -- 무거운 의존성은 모두 함수 안 지연 임포트로 격리되어 있다.
+# 통과해야 한다 -- 채점·데이터 생성·베이스라인 모듈은 무거운 의존성을 함수 안에서
+# 지연 임포트하고, torch 를 바로 임포트하는 학습 코드(models/, training/)의 테스트는
+# torch 가 없으면 건너뛴다.
 numpy==2.2.4
 
 
@@ -31,11 +33,17 @@ numpy==2.2.4
 # ---------------------------------------------------------------------------
 numpy==2.2.4          # 위 최소 단과 동일 핀. 중복 기재이며 pip 가 정상 처리하는 것을 확인했다.
 torch==2.9.1          # 확인됨: 이 환경에 설치되어 임포트됨
-pyroomacoustics==0.8.5  # 확인됨: 이미지 소스법 RIR 생성기. 커밋된 eval-dev 를 이 버전으로 만들었고, 다시 만들면 오디오·정답·메타가 바이트 단위로 같다
+# pyroomacoustics: 이미지 소스법 RIR 생성기. 커밋된 eval-dev 를 0.8.5 로 만들었고, 다시 만들면 오디오·정답·메타가 바이트 단위로 같다.
+# 0.8.5 는 macOS·Windows 휠만 있고 Linux 휠도 소스 배포본도 없어서(PyPI, 2026-10-30 확인), Linux(Colab 포함)에서는 Git 태그를
+# 빌드한다(C++ 컴파일러 필요, 약 3분). 이 맥에서 태그를 빌드한 0.8.5 는 휠과 RIR 이 비트 단위로 같았다. Linux 휠이 있는 0.10.1 은
+# 같은 방 설정에서 잔향 꼬리가 달라(RIR 상대 오차 15~85%) 대신 쓰지 않는다.
+pyroomacoustics==0.8.5 ; sys_platform != "linux"
+pyroomacoustics @ git+https://github.com/LCAV/pyroomacoustics@v0.8.5 ; sys_platform == "linux"
 soundfile==0.13.1     # 확인됨: libsndfile 바인딩. 오디오 읽기에만 쓴다 (make eval-dev 의 LibriSpeech FLAC 등). WAV 쓰기는 표준 라이브러리 wave
 scipy==1.14.1         # 확인됨: pyroomacoustics 의 의존성. 저장소 코드는 직접 임포트하지 않는다 (SRP-PHAT 은 numpy.fft)
 torchaudio==2.9.1     # 확인됨: torch 2.9.1 과 마이너 버전을 맞춰야 한다. 저장소 코드는 직접 임포트하지 않는다
 transformers==4.46.3  # 확인됨: 동결 ASR 백엔드 로더
+speechbrain==1.1.2    # 확인됨: 화자 구분 시스템의 동결 화자 인코더(speechbrain/spkrec-ecapa-voxceleb). 위 transformers·torch 와 한 프로세스에서 임포트된다
 
 # 선택: 개발용. 없어도 `make test` 는 unittest/doctest 로 동작한다.
 # pytest>=8.0         # [미확인]
@@ -49,10 +57,10 @@ transformers==4.46.3  # 확인됨: 동결 ASR 백엔드 로더
 #    상한을 좁게 박아두는 편이고, asteroid 는 오래된 numpy/scipy 조합을 끌고
 #    오는 편이다. 같이 설치하면 pip 가 resolve 에 성공해도 임포트 시점에
 #    깨지는 조합이 나온다 (전형적으로 huggingface-hub API 시그니처 불일치).
-#    -> 이번 회차는 **transformers 계열 하나로 통일한다.** NeMo·asteroid·
-#       speechbrain 은 requirements.txt 에 넣지 않는다.
-# 2) speechbrain 화자 임베딩이 필요해지면 `.venv-speechbrain` 별도 환경에서
-#    임베딩만 뽑아 파일로 떨어뜨리고, 메인 환경은 그 파일만 읽어라.
+#    -> NeMo·asteroid 는 requirements.txt 에 넣지 않는다.
+# 2) speechbrain 1.1.2 는 위 핀(torch 2.9.1 · transformers 4.46.3)과, 이 환경에
+#    깔린 huggingface-hub 0.36.2 와 한 환경에서 함께 임포트되는 것을 확인했다.
+#    ECAPA 는 학습·검증에서 동결 상태로만 쓰고, 체크포인트에 들어가지 않는다.
 # 3) torch 와 torchaudio 는 반드시 같은 마이너(2.9.x)여야 한다. 섞으면
 #    `undefined symbol` 로 임포트가 실패한다.
 # 4) macOS arm64 에서 pyroomacoustics 는 소스 빌드가 걸릴 수 있다

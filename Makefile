@@ -73,10 +73,26 @@ BASELINE_ARGS ?=
 
 # doctest 를 돌릴 파일 목록. baselines/*.py 를 빼먹으면 그 안의 doctest 예제가
 # 조용히 안 돌아간다.
-PY_DOCTEST_FILES = $(wildcard $(EVAL_ENTRY) $(SIM_ENTRY) baselines/*.py) make_eval_dev.py
+PY_DOCTEST_FILES = $(wildcard $(EVAL_ENTRY) $(SIM_ENTRY) baselines/*.py) make_eval_dev.py make_eval_t2.py
 BASELINE_MODS_PRESENT = $(patsubst baselines/%.py,baselines.%,$(filter-out baselines/__init__.py,$(wildcard baselines/*.py)))
 
-.PHONY: help eval-dev eval-dev-check eval-dev-verify sim-selftest asr-cache baseline score smoke test selftest compile clean distclean
+# 본 평가(다화자) 평가셋. 주 조건(턴마다 위치 이동 + 확산 잡음)과 같은 세션의 정지·무잡음 조건 두 벌을 만든다.
+#   make eval-t2 TESTCLEAN_ROOT=/path/to/LibriSpeech/test-clean
+# 커밋된 세트(T2_DIR, T2_DIR-static)에는 쓰지 않고 T2_GEN_DIR(-static) 에 다시 만든 뒤 eval-t2-check 로 비교한다.
+T2_DIR         ?= data/eval-t2
+T2_GEN_DIR     ?= data/eval-t2-rebuild
+TESTCLEAN_ROOT ?=
+
+# 화자 구분 시스템 학습 (본 평가용). torch · speechbrain · pyroomacoustics 가 필요하다.
+# GPU 학습은 notebooks/train_template.ipynb (Colab) 로 하고, 여기서는 같은 코드를 로컬에서 돌린다.
+#   make train TRAIN_CONFIG=configs/voice_only.json TRAIN_DATA=/path/with/LibriSpeech
+# TRAIN_DATA 아래에 LibriSpeech/<subset>/ 이 있어야 하고, 방 음향 뱅크(rirbanks/)는 처음 실행 때 만든다.
+TRAIN_CONFIG ?= configs/smoke.json
+TRAIN_DATA   ?= runs/train-data
+TRAIN_RUN    ?= runs/train-$(basename $(notdir $(TRAIN_CONFIG)))
+TRAIN_ARGS   ?=
+
+.PHONY: help eval-dev eval-dev-check eval-dev-verify eval-t2 eval-t2-check eval-t2-verify sim-selftest asr-cache baseline score smoke test selftest compile clean distclean train train-smoke train-test
 
 # help: 타깃 목록을 출력한다 (기본 타깃).
 help:
@@ -92,6 +108,12 @@ help:
 	@echo "  make eval-dev-check - $(GEN_DIR) 의 오디오·정답·메타가 커밋된 $(DATA_DIR) 와 바이트 단위로 같은지 확인한다"
 	@echo "  make eval-dev-verify - 렌더링 없이 eval-dev 불변식만 확인한다"
 	@echo "  make sim-selftest - simulate.py 의 plan-layer 불변식만 돌린다"
+	@echo "  make eval-t2      - 본 평가(2인) 평가셋을 $(T2_GEN_DIR) 와 $(T2_GEN_DIR)-static 에 만든다 (TESTCLEAN_ROOT 필요)"
+	@echo "  make eval-t2-check - 다시 만든 세트의 오디오·정답·메타가 $(T2_DIR) 와 바이트 단위로 같은지 확인한다"
+	@echo "  make eval-t2-verify - 렌더링 없이 본 평가셋 계획의 균형만 확인한다 (numpy 불필요)"
+	@echo "  make train        - $(TRAIN_CONFIG) 로 화자 구분 시스템 하나를 학습·검증해 $(TRAIN_RUN) 에 쓴다"
+	@echo "  make train-smoke  - 코퍼스·체크포인트 없이 학습 경로 전체를 CPU 로 한 번 돈다 (가짜 음성)"
+	@echo "  make train-test   - 학습 코드 불변식 (인과성 · 채널 순서 불변 · 마이크 1개의 공간 무정보) 테스트"
 	@echo "  make clean        - 예측·점수·runs/·바이트코드를 지운다 (평가셋은 그대로 둔다)"
 
 # eval-dev: 고정 시드로 사전 측정 평가셋(단일 화자)을 $(GEN_DIR) 에 다시 합성한다
@@ -166,6 +188,32 @@ smoke:
 	  --track $(TRACK) --out $(SMOKE_DIR)/scores.json > /dev/null
 	@echo "smoke 통과: $(SMOKE_DIR)/scores.json (official=false, 점수는 의미 없음)"
 
+eval-t2:
+	$(PY) make_eval_t2.py --out $(T2_GEN_DIR) \
+	  $(if $(TESTCLEAN_ROOT),--librispeech-root "$(TESTCLEAN_ROOT)",)
+
+eval-t2-check:
+	diff -rq --exclude=manifest.json --exclude=ATTRIBUTION.md $(T2_DIR) $(T2_GEN_DIR)
+	diff -rq --exclude=manifest.json --exclude=ATTRIBUTION.md $(T2_DIR)-static $(T2_GEN_DIR)-static
+	@echo "$(T2_GEN_DIR)(-static) 의 오디오·정답·메타가 $(T2_DIR)(-static) 와 같다"
+
+eval-t2-verify:
+	$(PY) make_eval_t2.py --verify-only
+
+# train: 설정 하나로 학습 -> 검증 -> summary.json 까지. 같은 TRAIN_RUN 으로 다시 돌리면 ckpt/LATEST.json 의
+# 가장 최근 온전한 체크포인트에서 이어 간다.
+train:
+	$(PY) train.py --config $(TRAIN_CONFIG) --data-root $(TRAIN_DATA) --run-dir $(TRAIN_RUN) $(TRAIN_ARGS)
+
+# train-smoke: 가짜 음성 · 간이 RIR 엔진 · 대체 목소리 인코더로 6걸음 학습하고 검증한다 (CPU 1~2분).
+# 숫자는 의미 없고, 학습 경로가 끝까지 도는지만 본다. Colab 에 올리기 전에 돌린다.
+train-smoke:
+	$(PY) train.py --config configs/smoke.json --data-root runs/train-smoke/data --run-dir runs/train-smoke/run --device cpu
+
+# train-test: torch 가 있으면 make test 의 유닛테스트 디스커버리에서도 같이 돈다 (없으면 건너뛴다).
+train-test:
+	$(PY) -m unittest tests.test_training -v
+
 # test: 무거운 의존성 없이 stdlib + numpy 만으로 통과해야 하는 테스트 모음.
 test: compile
 	$(PY) spec.py
@@ -191,7 +239,7 @@ selftest:
 
 # compile: 저장소의 모든 파이썬 파일을 바이트컴파일한다. 지연 임포트 규칙이 지켜지면 의존성 없이 통과한다.
 compile:
-	$(PY) -m compileall -q spec.py make_eval_dev.py $(wildcard $(EVAL_ENTRY) $(SIM_ENTRY)) $(wildcard baselines/*.py tests/*.py)
+	$(PY) -m compileall -q spec.py make_eval_dev.py make_eval_t2.py train.py $(wildcard $(EVAL_ENTRY) $(SIM_ENTRY)) $(wildcard baselines/*.py tests/*.py models/*.py training/*.py)
 
 # clean: 임시 산출물만 지운다. 커밋된 eval-dev 는 건드리지 않는다 (distclean 참조).
 # data/eval-dev 는 저장소에 커밋된 공식 평가셋이고 ATTRIBUTION.md 가 그 안에 있다.
