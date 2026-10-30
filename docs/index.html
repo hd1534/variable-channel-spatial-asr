@@ -1936,7 +1936,7 @@ tr.group-row td {
           <div class="subtopic-block">
             <h3 id="base-repro" class="subtopic-h3" data-subtopic="2.4 로컬 및 Colab 재현 절차"><span class="sub-num">2.4</span>로컬 및 Colab 재현 절차</h3>
             <p>
-              채점기(<code>evaluate.py</code>)는 파이썬 표준 라이브러리만으로 동작하며(선택적 <code>numpy</code> 가속 지원), 별도의 채점 서버나 유료 GPU 없이 아래 절차로 사전 측정 수치를 다시 계산해 확인할 수 있습니다. 예측 파일은 저장소에 포함되어 있지 않으므로 2단계 베이스라인 추론을 먼저 실행해야 하며, Colab 노트북은 이 중 Baseline 2의 추론과 채점을 재현합니다.
+              채점기(<code>evaluate.py</code>)는 파이썬 표준 라이브러리만으로 동작하며, 별도의 채점 서버나 유료 GPU 없이 아래 절차로 사전 측정 수치를 다시 계산해 확인할 수 있습니다. 예측 파일은 저장소에 포함되어 있지 않으므로 2단계 베이스라인 추론을 먼저 실행해야 하며, Colab 노트북은 이 중 Baseline 2의 추론과 채점을 재현합니다.
             </p>
             <div class="code-panel">
               <div class="code-bar">
@@ -1947,9 +1947,10 @@ tr.group-row td {
 python make_eval_dev.py --out /tmp/vcsasr-plan --n-sessions 144 --seed 20261029 --verify-only
 
 <span class="cm"># 1) (선택) 사전 측정 평가셋(eval-dev) 재생성 — 저장소의 data/eval-dev 를 그대로 쓰면 불필요하다.</span>
-<span class="cm">#    --n-sessions 144 는 필수다. 이 값에서만 방위각 36구간·거리 8구간이 엄격히 균일해져</span>
-<span class="cm">#    고정 분포 제출의 암기 이득이 0.000 nats 가 된다 (기본값 12 는 72케이스 · 1.792 nats).</span>
-<span class="cm">#    --out 을 data/eval-dev 로 두면 계획에 없는 기존 세션 파일이 삭제되므로 새 경로에 쓴다.</span>
+<span class="cm">#    --n-sessions 144 는 필수다. 커밋된 세트의 세션 수이고, 방위각 36구간·거리 8구간이 엄격히</span>
+<span class="cm">#    균일해져 고정 분포 제출의 암기 이득이 0.000 nats 가 되는 가장 작은 값이다</span>
+<span class="cm">#    (144 의 배수만 균일하다. 기본값 12 는 72케이스 · 1.792 nats).</span>
+<span class="cm">#    --out 을 커밋된 data/eval-dev(official: true)로 두면 생성기가 덮어쓰기를 거부하므로 새 경로에 쓴다.</span>
 <span class="cm">#    numpy · pyroomacoustics 0.8.5 · LibriSpeech dev-clean 코퍼스가 필요하다.</span>
 <span class="cm"># python make_eval_dev.py --out data/eval-dev-rebuild --n-sessions 144 --seed 20261029 \</span>
 <span class="cm">#       --librispeech-root &lt;LibriSpeech dev-clean 루트&gt;</span>
@@ -1969,7 +1970,7 @@ python evaluate.py --pred results/b2_pred.jsonl --gt data/eval-dev/ground_truth.
        --track 1 --out results/baseline2.repro.json</pre>
             </div>
             <p>
-              0·3단계는 추가 설치 없이 동작합니다(3단계는 선택적 <code>numpy</code> 가속만 사용). 2단계 베이스라인 추론에는 <code>torch</code>·<code>transformers</code>와 로컬에 미리 받아 둔 <code>wav2vec2-base-960h</code> 체크포인트가 필요하고(스크립트는 내려받지 않습니다), 1단계 재생성에는 <code>numpy</code>, <code>pyroomacoustics</code> 0.8.5, 그리고 LibriSpeech <code>dev-clean</code> 코퍼스가 필요합니다. 저장소에 <code>data/eval-dev</code>(144세션 · 864케이스)가 이미 포함되어 있으므로, 사전 측정 수치(5.2·5.3절) 재검증에는 1단계가 필요하지 않습니다. 본 평가(다화자) 재현 절차는 다화자 평가셋 공개 때 추가합니다.
+              0·3단계는 추가 설치 없이 동작합니다. 2단계 베이스라인 추론에는 <code>torch</code>·<code>transformers</code>와 로컬에 미리 받아 둔 <code>wav2vec2-base-960h</code> 체크포인트가 필요하고(스크립트는 내려받지 않습니다), 1단계 재생성에는 <code>numpy</code>, <code>pyroomacoustics</code> 0.8.5, 그리고 LibriSpeech <code>dev-clean</code> 코퍼스가 필요합니다. 저장소에 <code>data/eval-dev</code>(144세션 · 864케이스)가 이미 포함되어 있으므로, 사전 측정 수치(5.2·5.3절) 재검증에는 1단계가 필요하지 않습니다. 본 평가(다화자) 재현 절차는 다화자 평가셋 공개 때 추가합니다.
             </p>
           </div>
         </section>
@@ -2728,7 +2729,7 @@ python evaluate.py --pred results/b2_pred.jsonl --gt data/eval-dev/ground_truth.
               </div>
               <div class="limit-item">
                 <h4>2. 거리를 목표에서 뺀 이유: 소구경 배열의 약한 거리 단서</h4>
-                <p>배열 직경(최대 24 cm)에 비해 음원 거리(0.5~5.0 m)가 멀어 구면파 곡률만으로는 거리를 정밀하게 역산하기 어렵고, 세션 공통 이득 무작위화로 절대 음량 단서도 제거되어 있습니다. 남는 거리 단서는 직접음 대 잔향음 에너지 비(DRR)이며, <code>eval-dev</code>는 이 단서가 방의 흡음률과 섞이지 않도록 <code>거리 × RT60</code> 2×2 직교 배치로 구성했습니다(3.3절). 다만 잔향이 큰 실내에서는 거리에 따른 수신 레벨 변화가 방마다 다른 잔향 편차에 묻혀(거리 2배당 약 −1.8 dB, 방별 편차 약 5.8 dB) 거리 단서가 약합니다. 따라서 거리는 본 과제의 목표가 아니며 거리 수치는 사전 측정의 진단값으로만 보고하고, 본 과제는 마이크 수에 따라 확실히 늘어나는 방위 단서를 화자 구분에 활용하는 데 집중합니다.</p>
+                <p>배열 직경(최대 24 cm)에 비해 음원 거리(0.5~5.0 m)가 멀어 구면파 곡률만으로는 거리를 정밀하게 역산하기 어렵고, 세션 공통 이득 무작위화로 절대 음량 단서도 제거되어 있습니다. 남는 거리 단서는 직접음 대 잔향음 에너지 비(DRR)이며, <code>eval-dev</code>는 이 단서가 방의 흡음률과 섞이지 않도록 <code>거리 × RT60</code> 2×2 직교 배치로 구성했습니다(3.3절). 다만 사전 측정셋 144세션의 RIR에서는 거리에 따른 수신 레벨 변화가 방마다 다른 잔향 편차에 묻혀(거리 2배당 약 −1.8 dB, 방별 편차 약 5.8 dB) 거리 단서가 약합니다. 따라서 거리는 본 과제의 목표가 아니며 거리 수치는 사전 측정의 진단값으로만 보고하고, 본 과제는 마이크 수에 따라 확실히 늘어나는 방위 단서를 화자 구분에 활용하는 데 집중합니다.</p>
               </div>
             </div>
           </div>
