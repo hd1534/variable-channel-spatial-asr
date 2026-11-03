@@ -73,7 +73,7 @@ BASELINE_ARGS ?=
 
 # doctest 를 돌릴 파일 목록. baselines/*.py 를 빼먹으면 그 안의 doctest 예제가
 # 조용히 안 돌아간다.
-PY_DOCTEST_FILES = $(wildcard $(EVAL_ENTRY) $(SIM_ENTRY) baselines/*.py) make_eval_dev.py make_eval_t2.py
+PY_DOCTEST_FILES = $(wildcard $(EVAL_ENTRY) $(SIM_ENTRY) baselines/*.py) make_eval_dev.py make_eval_t2.py transcripts.py track_b.py
 BASELINE_MODS_PRESENT = $(patsubst baselines/%.py,baselines.%,$(filter-out baselines/__init__.py,$(wildcard baselines/*.py)))
 
 # 본 평가(다화자) 평가셋. 주 조건(턴마다 위치 이동 + 확산 잡음)과 같은 세션의 정지·무잡음 조건 두 벌을 만든다.
