@@ -604,8 +604,20 @@ def two_speaker_pred(
     return records
 
 
+def chosen_mappings(case: dict[str, Any]) -> dict[str, dict[str, str | None]]:
+    """``{metric: mapping}`` from one per-case report entry."""
+    return {
+        metric: entry["mapping"] for metric, entry in case["speaker_permutations"].items()
+    }
+
+
 class TestPermutationTieBreak(EvaluatorTestCase):
-    """(g) Identical transcripts tie on cpWER; the 3-stage rule still decides."""
+    """(g) Identical transcripts tie on cpWER; each metric's rule still decides.
+
+    When the transcripts cannot tell the mappings apart, the cpWER rule falls
+    through to the frame matches, so both metrics land on the same permutation
+    -- the behaviour from before the two rules were split.
+    """
 
     REFERENCE = {"spkA": "hello world", "spkB": "hello world"}
     HYPOTHESIS = {"s0": "hello world", "s1": "hello world"}
@@ -618,12 +630,19 @@ class TestPermutationTieBreak(EvaluatorTestCase):
         )
         return report, report["official"]["per_case"][CASE]
 
+    def assertBothMetricsChose(self, case: dict[str, Any], mapping: dict[str, str]) -> None:
+        self.assertEqual(
+            chosen_mappings(case),
+            {evaluate.METRIC_CPWER: mapping, evaluate.METRIC_SPEAKER_ACC: mapping},
+        )
+        self.assertFalse(case["permutations_differ"])
+
     def test_tie_break_stage_1_leaves_a_tie(self) -> None:
         """Both assignments give cpWER 0, so stage 1 cannot decide alone."""
-        self.assertEqual(spec.PERMUTATION_TIE_BREAK[0], "min_cpwer")
-        left = evaluate.solve_permutation(
+        self.assertEqual(spec.PERMUTATION_TIE_BREAK[evaluate.METRIC_CPWER][0], "min_cpwer")
+        left = evaluate.solve_permutations(
             ["s0", "s1"], ["spkA", "spkB"], self.HYPOTHESIS, self.REFERENCE, []
-        )
+        )[evaluate.METRIC_CPWER]
         swapped = evaluate.levenshtein(
             evaluate.tokenise(self.REFERENCE["spkB"]), evaluate.tokenise(self.HYPOTHESIS["s0"])
         )
@@ -632,34 +651,157 @@ class TestPermutationTieBreak(EvaluatorTestCase):
 
     def test_stage_2_picks_the_assignment_with_more_matching_steps(self) -> None:
         report, case = self._permutation(["spkA", "spkA", "spkB"], ["s0", "s0", "s1"])
-        self.assertEqual(case["speaker_permutation"], {"s0": "spkA", "s1": "spkB"})
+        self.assertBothMetricsChose(case, {"s0": "spkA", "s1": "spkB"})
         self.assertEqual(case["speaker_match_count"], 3)
         self.assertEqual(report["metrics"]["cpwer"], 0.0)
         self.assertEqual(report["metrics"]["speaker_attribution_accuracy"], 1.0)
+        self.assertEqual(report["official"]["n_cases_permutations_differ"], 0)
 
     def test_stage_2_overrides_the_lexicographic_default(self) -> None:
         """Proof that stage 2 runs before stage 3: the winner is the swap."""
         _report, case = self._permutation(["spkB", "spkB", "spkA"], ["s0", "s0", "s1"])
-        self.assertEqual(case["speaker_permutation"], {"s0": "spkB", "s1": "spkA"})
+        self.assertBothMetricsChose(case, {"s0": "spkB", "s1": "spkA"})
         self.assertEqual(case["speaker_match_count"], 3)
 
     def test_stage_3_decides_when_stages_1_and_2_tie(self) -> None:
-        self.assertEqual(spec.PERMUTATION_TIE_BREAK[2], "lexicographic")
+        for rule in spec.PERMUTATION_TIE_BREAK.values():
+            self.assertEqual(rule[-1], "lexicographic")
         _report, case = self._permutation(["spkA", "spkB"], [None, None])
         self.assertEqual(case["speaker_match_count"], 0)
-        self.assertEqual(case["speaker_permutation"], {"s0": "spkA", "s1": "spkB"})
+        self.assertBothMetricsChose(case, {"s0": "spkA", "s1": "spkB"})
 
     def test_the_choice_is_reproducible(self) -> None:
         first = self._permutation(["spkA", "spkB"], [None, None])[1]
         second = self._permutation(["spkA", "spkB"], [None, None])[1]
-        self.assertEqual(first["speaker_permutation"], second["speaker_permutation"])
+        self.assertEqual(first["speaker_permutations"], second["speaker_permutations"])
 
-    def test_one_permutation_per_case_not_per_timepoint(self) -> None:
-        """A single pi* for the whole case, so a swap mid-session costs accuracy."""
+    def test_one_permutation_per_metric_per_case_not_per_timepoint(self) -> None:
+        """One pi* per metric for the whole case, so a swap mid-session costs accuracy."""
         _report, case = self._permutation(["spkA", "spkB"], ["s1", "s0"])
-        mapping = case["speaker_permutation"]
-        self.assertEqual(len(mapping), 2)
-        self.assertEqual(set(mapping.values()), {"spkA", "spkB"})
+        for mapping in chosen_mappings(case).values():
+            self.assertEqual(len(mapping), 2)
+            self.assertEqual(set(mapping.values()), {"spkA", "spkB"})
+
+
+class TestPermutationPerMetric(EvaluatorTestCase):
+    """cpWER and Spk Acc are each scored under their own permutation.
+
+    The ASR below put each talker's words under the other talker's slot, while
+    the frame labels are exactly right.  cpWER is the minimum over permutations,
+    so it takes the swap; Spk Acc uses the frame-optimal permutation and must
+    stay perfect, because a transcription error is not an attribution error.
+    """
+
+    REFERENCE = {"spkA": "red green blue", "spkB": "one two"}
+    SWAPPED_ASR = {"s0": "one two", "s1": "red green blue"}
+    TRUTH = ["spkA", "spkA", "spkA", "spkB"]
+    PRED = ["s0", "s0", "s0", "s1"]
+    FRAME_MAPPING = {"s0": "spkA", "s1": "spkB"}
+    TEXT_MAPPING = {"s0": "spkB", "s1": "spkA"}
+
+    def report_for(self, hypothesis: dict[str, str]) -> dict[str, Any]:
+        return self.score(
+            two_speaker_gt(self.REFERENCE, self.TRUTH),
+            two_speaker_pred(hypothesis, self.PRED),
+            track=2,
+        )
+
+    def test_the_rules_are_split_by_metric(self) -> None:
+        self.assertEqual(set(spec.PERMUTATION_TIE_BREAK), set(evaluate.PERMUTATION_METRICS))
+        self.assertNotIn("min_cpwer", spec.PERMUTATION_TIE_BREAK[evaluate.METRIC_SPEAKER_ACC])
+        self.assertEqual(
+            spec.PERMUTATION_TIE_BREAK[evaluate.METRIC_CPWER],
+            ("min_cpwer", "max_speaker_match_count", "lexicographic"),
+        )
+        report = self.report_for(self.SWAPPED_ASR)
+        self.assertEqual(
+            report["rules"]["permutation_tie_break"],
+            {metric: list(rule) for metric, rule in spec.PERMUTATION_TIE_BREAK.items()},
+        )
+
+    def test_asr_errors_do_not_leak_into_speaker_accuracy(self) -> None:
+        report = self.report_for(self.SWAPPED_ASR)
+        case = report["official"]["per_case"][CASE]
+        self.assertEqual(
+            chosen_mappings(case),
+            {evaluate.METRIC_CPWER: self.TEXT_MAPPING, evaluate.METRIC_SPEAKER_ACC: self.FRAME_MAPPING},
+        )
+        self.assertTrue(case["permutations_differ"])
+        self.assertEqual(report["official"]["n_cases_permutations_differ"], 1)
+        self.assertEqual(report["metrics"]["speaker_attribution_accuracy"], 1.0)
+        self.assertEqual(case["speaker_match_count"], len(self.TRUTH))
+        # Scored under the cpWER permutation, as before the split, it would be 0.
+        self.assertEqual(
+            case["speaker_permutations"][evaluate.METRIC_CPWER]["speaker_match_count"], 0
+        )
+
+    def test_cpwer_still_takes_its_own_minimum(self) -> None:
+        report = self.report_for(self.SWAPPED_ASR)
+        case = report["official"]["per_case"][CASE]
+        self.assertEqual(case["cpwer_edits"], 0)
+        self.assertEqual(report["metrics"]["cpwer"], 0.0)
+        frame_cost = case["speaker_permutations"][evaluate.METRIC_SPEAKER_ACC]["cpwer_edits"]
+        self.assertEqual(frame_cost, 6)  # 3 + 3 edits had cpWER used the frames' mapping
+        self.assertLess(case["cpwer_edits"], frame_cost)
+
+    def test_transcripts_never_move_speaker_accuracy(self) -> None:
+        """Right, swapped, garbage or absent transcripts: the same Spk Acc and mapping."""
+        hypotheses = (
+            {"s0": "red green blue", "s1": "one two"},
+            self.SWAPPED_ASR,
+            {"s0": "zzz", "s1": "one two red green blue"},
+            {},
+        )
+        seen = set()
+        for hypothesis in hypotheses:
+            report = self.report_for(hypothesis)
+            case = report["official"]["per_case"][CASE]
+            attribution = case["speaker_permutations"][evaluate.METRIC_SPEAKER_ACC]
+            self.assertEqual(attribution["mapping"], self.FRAME_MAPPING)
+            seen.add(report["metrics"]["speaker_attribution_accuracy"])
+        self.assertEqual(seen, {1.0})
+
+    def test_a_frame_tie_falls_to_the_lexicographic_key_not_to_the_text(self) -> None:
+        """No predicted labels at all: cpWER follows the text, Spk Acc the fixed key."""
+        report = self.score(
+            two_speaker_gt(self.REFERENCE, ["spkA", "spkB"]),
+            two_speaker_pred(self.SWAPPED_ASR, [None, None]),
+            track=2,
+        )
+        mappings = chosen_mappings(report["official"]["per_case"][CASE])
+        self.assertEqual(mappings[evaluate.METRIC_CPWER], self.TEXT_MAPPING)
+        self.assertEqual(mappings[evaluate.METRIC_SPEAKER_ACC], self.FRAME_MAPPING)
+
+    def test_the_breakdown_uses_the_same_split(self) -> None:
+        report = self.report_for(self.SWAPPED_ASR)
+        mask = spec.parse_case_id(CASE)[1]
+        row = report["breakdown"]["by_mask"][mask]["metrics"]
+        self.assertEqual(row[evaluate.METRIC_SPEAKER_ACC], 1.0)
+        self.assertEqual(row[evaluate.METRIC_CPWER], 0.0)
+
+    def test_the_evaluator_refuses_a_rule_it_cannot_apply(self) -> None:
+        unknown_stage = {
+            **spec.PERMUTATION_TIE_BREAK,
+            evaluate.METRIC_SPEAKER_ACC: ("max_confidence", "lexicographic"),
+        }
+        with unittest.mock.patch.object(spec, "PERMUTATION_TIE_BREAK", unknown_stage):
+            with self.assertRaises(RuntimeError):
+                evaluate._check_contract_alignment()
+        missing_metric = {evaluate.METRIC_CPWER: spec.PERMUTATION_TIE_BREAK[evaluate.METRIC_CPWER]}
+        with unittest.mock.patch.object(spec, "PERMUTATION_TIE_BREAK", missing_metric):
+            with self.assertRaises(RuntimeError):
+                evaluate._check_contract_alignment()
+        evaluate._check_contract_alignment()
+
+    def test_the_contract_requires_a_total_order(self) -> None:
+        open_ended = {
+            **spec.PERMUTATION_TIE_BREAK,
+            evaluate.METRIC_SPEAKER_ACC: ("max_speaker_match_count",),
+        }
+        with unittest.mock.patch.object(spec, "PERMUTATION_TIE_BREAK", open_ended):
+            with self.assertRaises(RuntimeError):
+                spec._self_check()
+        spec._self_check()
 
 
 class TestSpeakerCountMismatch(EvaluatorTestCase):
@@ -672,8 +814,9 @@ class TestSpeakerCountMismatch(EvaluatorTestCase):
             track=2,
         )
         case = report["official"]["per_case"][CASE]
-        self.assertEqual(case["speaker_permutation"], {"s0": "spkA", "s1": None})
-        self.assertEqual(case["unmatched_reference_speakers"], [])
+        for chosen in case["speaker_permutations"].values():
+            self.assertEqual(chosen["mapping"], {"s0": "spkA", "s1": None})
+            self.assertEqual(chosen["unmatched_reference_speakers"], [])
         self.assertEqual(case["cpwer_reference_words"], 2)
         self.assertEqual(case["cpwer_edits"], 2)  # the two unpaired words
         self.assertEqual(report["metrics"]["cpwer"], 1.0)
@@ -686,8 +829,9 @@ class TestSpeakerCountMismatch(EvaluatorTestCase):
             track=2,
         )
         case = report["official"]["per_case"][CASE]
-        self.assertEqual(case["speaker_permutation"], {"s0": "spkA"})
-        self.assertEqual(case["unmatched_reference_speakers"], ["spkB"])
+        for chosen in case["speaker_permutations"].values():
+            self.assertEqual(chosen["mapping"], {"s0": "spkA"})
+            self.assertEqual(chosen["unmatched_reference_speakers"], ["spkB"])
         self.assertEqual(case["cpwer_reference_words"], 4)
         self.assertEqual(case["cpwer_edits"], 2)  # the two unpaired reference words
         self.assertEqual(report["metrics"]["cpwer"], 0.5)

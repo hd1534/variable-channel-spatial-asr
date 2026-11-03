@@ -19,7 +19,7 @@ import re
 from collections.abc import Mapping
 from typing import Any, Final, Literal
 
-SPEC_VERSION: Final[str] = "0.2.0"
+SPEC_VERSION: Final[str] = "0.3.0"
 """Semantic version of this contract. Stamped into every score report."""
 
 
@@ -48,12 +48,25 @@ CHUNK_HOP_SEC: Final[float] = 0.25
 prediction."""
 
 ASR_MIN_SEGMENT_SEC: Final[float] = 1.0
-"""Minimum VAD segment length handed to the ASR backend.
+"""Minimum length of one segment handed to the frozen ASR backend.
 
-``final_transcripts`` is built by running the frozen ASR once per VAD segment
-and attributing each segment transcript to the majority speaker slot over that
-segment. [v1.7 gap] The proposal scored ``final_transcripts`` but never said
-who produces it.
+``final_transcripts`` is built by running the frozen ASR once per segment and
+giving the segment's text to that segment's speaker slot.  Segments are cut
+where the *predicted slot* changes: each run of one constant predicted slot over
+grid instants ``k0 .. k1 - 1`` is one segment covering
+``[k0 * DELTA_T_SEC, k1 * DELTA_T_SEC)``, and a run shorter than this value is
+padded symmetrically to it (clipped to the session) before decoding.  With a
+single slot (Track 1) every cut hands every word to that slot, so cutting by
+VAD there, as the Track 1 baselines do, attributes the same.  This is guidance
+for systems; ``evaluate.py`` scores only the text and does not check the cut.
+
+Cutting by VAD alone does not work with two talkers: the energy VAD returns one
+20 s segment for nearly every noisy ``eval-t2`` session, so even a perfect
+attributor hands every word to one slot (measurements in ``SPEC_DECISIONS.md``
+section 15).
+
+[v1.7 gap] The proposal scored ``final_transcripts`` but never said who
+produces it.
 """
 
 GRID_ENDPOINT: Final[Literal["exclusive"]] = "exclusive"
@@ -553,8 +566,8 @@ MAX_PERMUTATION_SLOTS: Final[int] = 8
 """Hard cap on ``max(len(predicted slots), len(reference slots))`` per case.
 
 Beyond it the exhaustive search over assignments is refused rather than
-approximated, so a reported ``cpWER`` is always the true optimum and never a
-greedy stand-in.
+approximated, so a reported ``cpWER`` or Spk Acc is always the true optimum
+under its rule in :data:`PERMUTATION_TIE_BREAK` and never a greedy stand-in.
 
 [v1.7 gap] :data:`MAX_SPEAKERS_PER_TRACK` caps what a *track* allows, but the
 padded assignment is sized by ``max(pred, ref)``, so an over-segmenting tracker
@@ -564,18 +577,39 @@ rejection a participant can hit, so it belongs in the contract rather than in
 the evaluator.
 """
 
-PERMUTATION_TIE_BREAK: Final[tuple[str, str, str]] = (
-    "min_cpwer",
-    "max_speaker_match_count",
-    "lexicographic",
-)
-"""The three-stage deterministic rule from the proposal, kept as is."""
+PERMUTATION_TIE_BREAK: Final[dict[str, tuple[str, ...]]] = {
+    "cpwer": ("min_cpwer", "max_speaker_match_count", "lexicographic"),
+    "speaker_attribution_accuracy": ("max_speaker_match_count", "lexicographic"),
+}
+"""Per metric, the deterministic rule that picks the speaker permutation that
+metric is scored under.  Each case gets one permutation per key, applied to
+the whole case; the two keys may pick different permutations.
+
+* ``cpwer`` keeps the proposal's three stages: fewest word edits, then most
+  labelled instants whose mapped speaker is the reference speaker, then
+  :data:`PERMUTATION_LEXICOGRAPHIC_KEY`.  This is the standard cpWER, a
+  minimum over permutations.
+* ``speaker_attribution_accuracy`` uses the frame-optimal permutation: most
+  matching labelled instants, then the same lexicographic key.  Transcripts
+  never enter it, not even as a tie-break.
+
+``wer`` concatenates slots by label (:data:`MULTI_SPEAKER_WER_CONCAT_ORDER`) and
+every spatial metric compares an instant's prediction with that instant's
+label, so no other metric depends on a permutation.
+
+Until 0.2.0 both metrics shared the ``cpwer`` permutation, which let
+transcription errors leak into Spk Acc: on ``data/eval-t2`` the true speaker
+labels submitted with frozen-ASR transcripts scored Spk Acc 0.925 at 5 dB SNR
+instead of 1.0, because bad transcripts made the swapped mapping cheaper in
+cpWER.
+"""
 
 
 PERMUTATION_LEXICOGRAPHIC_KEY: Final[
     Literal["assigned_reference_slot_indices"]
 ] = "assigned_reference_slot_indices"
-"""What stage 3 of :data:`PERMUTATION_TIE_BREAK` actually orders.
+"""What the final ``lexicographic`` stage of every
+:data:`PERMUTATION_TIE_BREAK` rule actually orders.
 
 The winning candidate is the one with the smallest tuple of assigned
 reference-slot indices, read over the submitted labels in ascending order, with
@@ -889,7 +923,7 @@ PROB_FIELD_LENGTHS: Final[dict[str, int]] = {
 SPEAKER_LABELS_ARE_OPAQUE: Final[bool] = True
 """Submitted speaker labels carry no meaning beyond the partition they induce.
 
-Every speaker metric is computed after the optimal assignment of
+Every speaker metric is computed after its own optimal assignment under
 :data:`PERMUTATION_TIE_BREAK`, so a submission may name its slots anything.  The
 ground truth's labels are source identities and a submission is not expected to
 guess them -- that is what "anonymous speaker id" in the proposal means, and it
@@ -1068,7 +1102,7 @@ message and its documentation drift apart.
 SCORING_RULES: Final[dict[str, str]] = {
     "R-DUP": "duplicates reject the file (DUPLICATE_RECORD_POLICY)",
     "R-MISS": "a missing prediction draws the PENALTY_* values, never a drop",
-    "R-PERM": "speaker metrics are scored after PERMUTATION_TIE_BREAK",
+    "R-PERM": "cpwer and speaker_attribution_accuracy each use their own permutation (PERMUTATION_TIE_BREAK)",
     "R-NLL": "no smoothing; only the true bin is clipped at NLL_EPSILON",
     "R-PT": "an explicit point wins; otherwise the MAP bin center is used",
     "R-TXT": "WER reads final_transcripts only, after TEXT_NORMALISATION",
@@ -1107,6 +1141,15 @@ def _self_check() -> None:
     for name in OFFICIAL_METRICS:
         if "coverage" in name and not name.endswith(f"_{percent}"):
             raise RuntimeError(f"COVERAGE_LEVEL={COVERAGE_LEVEL} does not match metric {name!r}")
+
+    for metric, rule in PERMUTATION_TIE_BREAK.items():
+        if metric not in OFFICIAL_METRICS:
+            raise RuntimeError(f"PERMUTATION_TIE_BREAK names {metric!r}, which is not an official metric")
+        if not rule or rule[-1] != "lexicographic" or len(set(rule)) != len(rule):
+            raise RuntimeError(
+                f"PERMUTATION_TIE_BREAK[{metric!r}] must end in 'lexicographic' and repeat no "
+                "stage, or it does not pick exactly one permutation"
+            )
 
     if set(PROB_FIELD_LENGTHS.values()) != {K_AZIMUTH, K_DISTANCE}:
         raise RuntimeError("PROB_FIELD_LENGTHS disagrees with the bin counts")

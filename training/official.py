@@ -16,10 +16,11 @@ silently costs labelled instants (measured against ``evaluate.py`` 0.2.0):
   valid, the speaker metrics are computed, and the spatial point metrics of
   such a file are penalty values that must not be read.
 
-Without ``final_transcripts`` every speaker permutation ties on cpWER, so the
-official Spk Acc uses the frame-optimal permutation -- per case the same number
-validation computes, and averaged over cases the same way.  With transcripts the
-permutation is chosen by cpWER first.
+The official Spk Acc is scored under the frame-optimal permutation whether or
+not ``final_transcripts`` are submitted (``spec.PERMUTATION_TIE_BREAK``, since
+spec 0.3.0) -- per case the same number validation computes, and averaged over
+cases the same way.  Transcripts move only cpWER, which takes its own
+min-edit permutation.
 
 Ground-truth talkers are named ``spk_0, spk_1, ...`` in order of first
 appearance, the order the slots open in, so the speaker-agnostic WER (which
@@ -44,10 +45,10 @@ def track_for(n_speakers: int) -> int:
 
     >>> track_for(1), track_for(2)
     (1, 2)
-    >>> track_for(3)
+    >>> track_for(3)  # doctest: +ELLIPSIS
     Traceback (most recent call last):
         ...
-    ValueError: the scoring contract (spec 0.2.0) has no track for 3 talkers per case
+    ValueError: the scoring contract (spec ...) has no track for 3 talkers per case
     """
     for track, cap in sorted(spec.MAX_SPEAKERS_PER_TRACK.items()):
         if n_speakers <= cap:

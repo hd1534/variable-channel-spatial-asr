@@ -13,9 +13,10 @@ threshold at once on the Gram matrix (one pass over time, vectorised over
 thresholds), adapted from the voice-only measurement of 2026-10-30.
 
 Spk Acc here is the fraction of labelled instants whose slot maps to the right
-talker under the best one-to-one slot-talker assignment.  The
-official ``evaluate.py`` picks that assignment by cpWER first, so its number can
-only be lower or equal; this one is for model selection.
+talker under the best one-to-one slot-talker assignment.  Since spec 0.3.0 the
+official ``evaluate.py`` scores Spk Acc under that same frame-optimal
+assignment, never the cpWER one, so per case the two numbers agree; this one
+is for model selection.
 """
 
 from __future__ import annotations
@@ -126,7 +127,7 @@ def best_assignment_accuracy(truth: np.ndarray, pred: np.ndarray) -> float | Non
     """Fraction of labelled instants (``truth >= 0``) right under the best mapping.
 
     The one-to-one slot-to-talker mapping is found by exhaustive search, like
-    ``evaluate.solve_permutation``: at most four talkers and a handful of slots
+    ``evaluate.solve_permutations``: at most four talkers and a handful of slots
     per case, so there is no need for an assignment solver.
 
     >>> best_assignment_accuracy(np.array([0, 0, 1, 1, -1]), np.array([1, 1, 0, 0, 3]))

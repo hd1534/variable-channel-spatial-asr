@@ -290,7 +290,7 @@ make train TRAIN_CONFIG=configs/voice_only.json TRAIN_DATA=<LibriSpeech/ 를 담
 |---|---|---|
 | **R-DUP** | 중복 레코드가 있으면 임의의 행을 선택하지 않고 제출 파일 전체를 거부한다(`R-DUP-01`·`R-DUP-02`). | `DELTA_T_SEC`, `DUPLICATE_RECORD_POLICY` |
 | **R-MISS** | 활성 평가 시점 결측 시 레코드를 제외하지 않고 최악 페널티(방위 180.0°, 거리 5.0 m, 2D 오차 10.0 m, 화자 오답, NLL 27.631 nats)를 부과한다. 전사 누락 시에는 참조 단어를 전량 삭제 오류로 계산해 전략적 기권 이득을 차단한다. | `PENALTY_AZIMUTH_DEG`, `PENALTY_DISTANCE_M`, `PENALTY_POS_ERROR_2D_M`, `PENALTY_NLL`, `MISSING_TRANSCRIPT_POLICY` |
-| **R-PERM** | 예측·참조 화자 슬롯을 `max(len(pred), len(ref))` 크기로 빈 문자열 패딩한 뒤 1:1 최적 순열을 찾는다. 동률은 `cpWER 최소 → 시점별 화자 일치 수 최대 → 참조 슬롯 인덱스 사전순`으로 해소한다. 단일 화자(`--track 1`)의 `cpwer`는 규칙상 `N/A`다. | `SPEAKER_PAD_TOKEN`, `PERMUTATION_TIE_BREAK`, `MAX_SPEAKERS_PER_TRACK`, `TRACK_UNDEFINED_METRICS` |
+| **R-PERM** | 예측·참조 화자 슬롯을 `max(len(pred), len(ref))` 크기로 빈 문자열 패딩한 뒤 1:1 최적 순열을 지표마다 따로 찾는다. `cpwer`은 `cpWER 최소 → 시점별 화자 일치 수 최대 → 참조 슬롯 인덱스 사전순`, `Spk Acc`는 `시점별 화자 일치 수 최대 → 참조 슬롯 인덱스 사전순`이라 전사가 화자 귀속 정확도를 바꾸지 못한다(spec 0.3.0). 단일 화자(`--track 1`)의 `cpwer`는 규칙상 `N/A`다. | `SPEAKER_PAD_TOKEN`, `PERMUTATION_TIE_BREAK`, `MAX_SPEAKERS_PER_TRACK`, `TRACK_UNDEFINED_METRICS` |
 | **R-NLL** | 제출 확률을 평활화하거나 재정규화하지 않는다. 수치 안정성을 위한 `1e-12` 하한 클리핑은 정답 구간 확률에만 적용한다. | `K_AZIMUTH`, `K_DISTANCE`, `NORMALISE_SUBMITTED_PROBS`, `NLL_EPSILON` |
 | **R-PT** | 명시적 점 예측이 있으면 우선 사용하고, 생략된 경우에만 분포의 MAP 구간 대표점(방위 산술 중심, 거리 기하 중심)으로 점 지표를 계산한다. | `AZIMUTH_BIN_CENTERS_DEG`, `DISTANCE_BIN_CENTERS_M` |
 | **R-TXT** | `wer`는 `final_transcripts`만 읽으며, 참조와 가설 텍스트 모두에 `NFKC → 소문자화(casefold) → 구두점 처리 → 숫자 영단어 변환(0~999) → 공백 정리`를 동일 순서로 적용한다. | `TEXT_NORMALISATION`, `WER_AGGREGATION` |

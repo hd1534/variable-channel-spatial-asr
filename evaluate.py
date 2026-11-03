@@ -97,7 +97,7 @@ except ImportError:  # pragma: no cover - exercised on numpy-less machines
 
 HAS_NUMPY: Final[bool] = _np is not None
 
-EVALUATOR_VERSION: Final[str] = "0.1.0"
+EVALUATOR_VERSION: Final[str] = "0.2.0"
 """Version of this scorer. Independent of :data:`spec.SPEC_VERSION`."""
 
 
@@ -230,6 +230,22 @@ MACRO_METRICS: Final[tuple[str, ...]] = (
 MICRO_METRICS: Final[tuple[str, ...]] = (METRIC_WER, METRIC_CPWER)
 """Metrics aggregated with :data:`spec.WER_AGGREGATION`."""
 
+PERMUTATION_METRICS: Final[tuple[str, ...]] = (METRIC_CPWER, METRIC_SPEAKER_ACC)
+"""Metrics scored through a speaker permutation, each under its own rule in
+:data:`spec.PERMUTATION_TIE_BREAK`.
+
+No other metric reads one: ``wer`` concatenates slots by label, and every
+spatial metric compares an instant's prediction with that instant's label.
+"""
+
+TIE_BREAK_STAGES: Final[tuple[str, ...]] = (
+    "min_cpwer",
+    "max_speaker_match_count",
+    "lexicographic",
+)
+"""Every stage name a :data:`spec.PERMUTATION_TIE_BREAK` rule may use here, in
+the order :func:`_tie_break_key` lists their sort components."""
+
 
 def _check_contract_alignment() -> None:
     """Fail fast if this file cannot honour the contract :mod:`spec` declares.
@@ -255,6 +271,15 @@ def _check_contract_alignment() -> None:
         raise RuntimeError(
             f"unsupported concatenation order: {spec.MULTI_SPEAKER_WER_CONCAT_ORDER!r}"
         )
+    if set(spec.PERMUTATION_TIE_BREAK) != set(PERMUTATION_METRICS):
+        raise RuntimeError(
+            "spec.PERMUTATION_TIE_BREAK must give a rule for exactly "
+            f"{sorted(PERMUTATION_METRICS)}, got {sorted(spec.PERMUTATION_TIE_BREAK)}"
+        )
+    for metric, rule in spec.PERMUTATION_TIE_BREAK.items():
+        unsupported = sorted(set(rule) - set(TIE_BREAK_STAGES))
+        if unsupported:
+            raise RuntimeError(f"unsupported tie-break stage(s) for {metric!r}: {unsupported}")
     if spec.PERMUTATION_LEXICOGRAPHIC_KEY != "assigned_reference_slot_indices":
         raise RuntimeError(
             f"unsupported tie-break key: {spec.PERMUTATION_LEXICOGRAPHIC_KEY!r}"
@@ -1322,18 +1347,20 @@ def resolve_xy(point: PredPoint | None) -> tuple[tuple[float, float] | None, str
 
 
 # ---------------------------------------------------------------------------
-# Speaker permutation pi* (spec.PERMUTATION_TIE_BREAK)
+# Speaker permutations, one per metric (spec.PERMUTATION_TIE_BREAK)
 # ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
 class SpeakerAssignment:
-    """The single ``pi*`` chosen for one ``case_id``.
+    """One permutation of one ``case_id``, as one metric's rule chose it.
 
     ``mapping`` sends each submitted speaker label to a reference label, or to
     ``None`` when it was matched against a :data:`spec.SPEAKER_PAD_TOKEN` slot
     (all of its words are then insertions).  ``unmatched_ref`` lists reference
     speakers with no submitted counterpart (all of their words are deletions).
+    ``cpwer_edits`` and ``match_count`` are what *this* mapping costs in word
+    edits and earns in matching labelled instants, whichever rule picked it.
     """
 
     mapping: dict[str, str | None]
@@ -1342,34 +1369,83 @@ class SpeakerAssignment:
     match_count: int
 
 
-def solve_permutation(
+def _tie_break_key(
+    rule: Sequence[str], perm: tuple[int, ...], edits: int, matches: int
+) -> tuple[Any, ...]:
+    """Sort key of one candidate bijection under one rule; the smallest wins.
+
+    >>> _tie_break_key(("min_cpwer", "max_speaker_match_count", "lexicographic"), (1, 0), 3, 5)
+    (3, -5, (1, 0))
+    >>> _tie_break_key(("max_speaker_match_count", "lexicographic"), (1, 0), 3, 5)
+    (-5, (1, 0))
+    """
+    component = dict(zip(TIE_BREAK_STAGES, (edits, -matches, perm)))
+    return tuple(component[stage] for stage in rule)
+
+
+def _assignment(
+    pred_slots: Sequence[str],
+    ref_slots: Sequence[str],
+    perm: tuple[int, ...],
+    edits: int,
+    matches: int,
+) -> SpeakerAssignment:
+    """Translate a padded bijection back into submitted and reference labels."""
+    mapping: dict[str, str | None] = {}
+    unmatched: list[str] = []
+    for index, label in enumerate(pred_slots):
+        target = ref_slots[perm[index]]
+        target_is_pad = target.startswith(PAD_LABEL_PREFIX)
+        if label.startswith(PAD_LABEL_PREFIX):
+            if not target_is_pad:
+                unmatched.append(target)
+        else:
+            mapping[label] = None if target_is_pad else target
+    return SpeakerAssignment(
+        mapping=mapping,
+        unmatched_ref=tuple(sorted(unmatched)),
+        cpwer_edits=edits,
+        match_count=matches,
+    )
+
+
+def solve_permutations(
     pred_labels: Sequence[str],
     ref_labels: Sequence[str],
     pred_texts: Mapping[str, str],
     ref_texts: Mapping[str, str],
     speaker_pairs: Sequence[tuple[str | None, str | None]],
-) -> SpeakerAssignment:
-    """Pick the one ``pi*`` used for a whole ``case_id``.
+) -> dict[str, SpeakerAssignment]:
+    """Pick, for each metric of :data:`spec.PERMUTATION_TIE_BREAK`, the ``pi*``
+    that metric is scored under for a whole ``case_id``.
 
     Both label sets are padded to ``max(len(pred), len(ref))`` with
     :data:`spec.SPEAKER_PAD_TOKEN` slots, so an assignment always exists, and
-    every bijection is enumerated (a track allows at most two speakers, so
-    brute force is exact).  :data:`spec.PERMUTATION_TIE_BREAK` is applied in
-    order:
+    every bijection is enumerated once (brute force is exact under
+    :data:`spec.MAX_PERMUTATION_SLOTS`).  Each candidate is then ordered by
+    each metric's rule, built from these stages:
 
-    1. ``min_cpwer`` -- the reference word count is the same for every
-       assignment, so minimising ``cpWER`` is minimising total edit distance;
-    2. ``max_speaker_match_count`` -- most time steps whose mapped speaker
-       equals the reference speaker;
-    3. ``lexicographic`` -- smallest tuple of assigned reference-slot indices,
-       taken over the submitted labels in ascending order with the padded slots
-       last.  This is :data:`spec.PERMUTATION_LEXICOGRAPHIC_KEY`, which names the
-       sequence being ordered.
+    * ``min_cpwer`` -- fewest total word edits; the reference word count is the
+      same for every candidate, so this is minimising ``cpWER``;
+    * ``max_speaker_match_count`` -- most ``(truth, predicted)`` speaker pairs
+      whose mapped predicted speaker equals the reference speaker;
+    * ``lexicographic`` -- smallest tuple of assigned reference-slot indices,
+      taken over the submitted labels in ascending order with the padded slots
+      last.  This is :data:`spec.PERMUTATION_LEXICOGRAPHIC_KEY`.
 
-    >>> a = solve_permutation(["s0"], ["spk0"], {"s0": "hi there"},
-    ...                       {"spk0": "hi there"}, [])
-    >>> a.mapping, a.cpwer_edits
-    ({'s0': 'spk0'}, 0)
+    ``cpwer`` uses all three, so its permutation is the standard cpWER minimum.
+    ``speaker_attribution_accuracy`` skips ``min_cpwer``, so transcripts cannot
+    move it.  Below, the ASR put each talker's words under the other's slot:
+    cpWER takes the swap, attribution keeps the frames' mapping.
+
+    >>> found = solve_permutations(
+    ...     ["s0", "s1"], ["A", "B"], {"s0": "one two", "s1": "red"},
+    ...     {"A": "red", "B": "one two"}, [("A", "s0"), ("A", "s0"), ("B", "s1")])
+    >>> found["cpwer"].mapping, found["cpwer"].cpwer_edits
+    ({'s0': 'B', 's1': 'A'}, 0)
+    >>> attribution = found["speaker_attribution_accuracy"]
+    >>> attribution.mapping, attribution.match_count, attribution.cpwer_edits
+    ({'s0': 'A', 's1': 'B'}, 3, 4)
     """
     slots = max(len(pred_labels), len(ref_labels))
     if slots > _MAX_PERMUTATION_SLOTS:
@@ -1377,58 +1453,39 @@ def solve_permutation(
             RULE_SPEAKER_COUNT,
             f"{slots} speaker slots exceeds the permutation search limit of {_MAX_PERMUTATION_SLOTS}",
         )
+    rules = spec.PERMUTATION_TIE_BREAK
     if slots == 0:
-        return SpeakerAssignment(mapping={}, unmatched_ref=(), cpwer_edits=0, match_count=0)
+        empty = SpeakerAssignment(mapping={}, unmatched_ref=(), cpwer_edits=0, match_count=0)
+        return {metric: empty for metric in rules}
     pred_slots = list(pred_labels) + [
         f"{PAD_LABEL_PREFIX}p{i}" for i in range(slots - len(pred_labels))
     ]
     ref_slots = list(ref_labels) + [
         f"{PAD_LABEL_PREFIX}r{i}" for i in range(slots - len(ref_labels))
     ]
-    ref_tokens = {
-        label: tokenise(ref_texts.get(label, spec.SPEAKER_PAD_TOKEN)) for label in ref_slots
-    }
-    hyp_tokens = {
-        label: tokenise(pred_texts.get(label, spec.SPEAKER_PAD_TOKEN)) for label in pred_slots
-    }
-    best_key: tuple[int, int, tuple[int, ...]] | None = None
-    best_internal: dict[str, str] = {}
-    best_edits = 0
-    best_matches = 0
+    ref_tokens = [tokenise(ref_texts.get(label, spec.SPEAKER_PAD_TOKEN)) for label in ref_slots]
+    hyp_tokens = [tokenise(pred_texts.get(label, spec.SPEAKER_PAD_TOKEN)) for label in pred_slots]
+    # Per (submitted slot i, reference slot j): word edits and matching pairs.
+    edit_cost = [[levenshtein(ref, hyp) for ref in ref_tokens] for hyp in hyp_tokens]
+    pair_count = [[0] * slots for _ in range(slots)]
+    pred_index = {label: i for i, label in enumerate(pred_slots)}
+    ref_index = {label: j for j, label in enumerate(ref_slots)}
+    for truth_speaker, pred_speaker in speaker_pairs:
+        if truth_speaker in ref_index and pred_speaker in pred_index:
+            pair_count[pred_index[pred_speaker]][ref_index[truth_speaker]] += 1
+
+    best: dict[str, tuple[tuple[Any, ...], tuple[int, ...], int, int]] = {}
     for perm in permutations(range(slots)):
-        internal = {pred_slots[i]: ref_slots[perm[i]] for i in range(slots)}
-        edits = sum(
-            levenshtein(ref_tokens[internal[pred_slots[i]]], hyp_tokens[pred_slots[i]])
-            for i in range(slots)
-        )
-        matches = sum(
-            1
-            for truth_speaker, pred_speaker in speaker_pairs
-            if truth_speaker is not None
-            and pred_speaker is not None
-            and internal.get(pred_speaker) == truth_speaker
-        )
-        key = (edits, -matches, perm)
-        if best_key is None or key < best_key:
-            best_key, best_internal, best_edits, best_matches = key, internal, edits, matches
-    mapping: dict[str, str | None] = {
-        label: (None if target.startswith(PAD_LABEL_PREFIX) else target)
-        for label, target in best_internal.items()
-        if not label.startswith(PAD_LABEL_PREFIX)
+        edits = sum(edit_cost[i][perm[i]] for i in range(slots))
+        matches = sum(pair_count[i][perm[i]] for i in range(slots))
+        for metric, rule in rules.items():
+            key = _tie_break_key(rule, perm, edits, matches)
+            if metric not in best or key < best[metric][0]:
+                best[metric] = (key, perm, edits, matches)
+    return {
+        metric: _assignment(pred_slots, ref_slots, perm, edits, matches)
+        for metric, (_key, perm, edits, matches) in best.items()
     }
-    unmatched_ref = tuple(
-        sorted(
-            target
-            for label, target in best_internal.items()
-            if label.startswith(PAD_LABEL_PREFIX) and not target.startswith(PAD_LABEL_PREFIX)
-        )
-    )
-    return SpeakerAssignment(
-        mapping=mapping,
-        unmatched_ref=unmatched_ref,
-        cpwer_edits=best_edits,
-        match_count=best_matches,
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -1527,6 +1584,7 @@ def _score_scope(
     wer_reference_words = 0
     cpwer_edits = 0
     cpwer_reference_words = 0
+    n_permutations_differ = 0
     scored_timepoints = 0
     missing_timepoints = 0
     per_case: dict[str, Any] = {}
@@ -1564,15 +1622,20 @@ def _score_scope(
             )
             for key in truth_order
         ]
-        assignment = solve_permutation(
+        assignments = solve_permutations(
             predicted_labels,
             reference_labels,
             hypothesis_texts,
             reference_texts,
             speaker_pairs,
         )
+        cpwer_assignment = assignments[METRIC_CPWER]
+        attribution = assignments[METRIC_SPEAKER_ACC]
+        permutations_differ = cpwer_assignment.mapping != attribution.mapping
+        n_permutations_differ += int(permutations_differ)
 
         # --- transcription (micro_global; a missing record is all deletions) --
+        # ``wer`` reads no permutation; ``cpwer`` reads its own.
         reference_tokens = _concatenated_tokens(reference_texts)
         hypothesis_tokens = _concatenated_tokens(hypothesis_texts)
         case_wer_edits = levenshtein(reference_tokens, hypothesis_tokens)
@@ -1582,7 +1645,7 @@ def _score_scope(
             len(tokenise(reference_texts.get(label, spec.SPEAKER_PAD_TOKEN)))
             for label in reference_labels
         )
-        cpwer_edits += assignment.cpwer_edits
+        cpwer_edits += cpwer_assignment.cpwer_edits
         cpwer_reference_words += case_cpwer_reference_words
 
         if case_id in preds.rtf:
@@ -1665,7 +1728,7 @@ def _score_scope(
                 else:
                     correct = (
                         prediction.speaker is not None
-                        and assignment.mapping.get(prediction.speaker) == target.speaker
+                        and attribution.mapping.get(prediction.speaker) == target.speaker
                     )
                 macro[METRIC_SPEAKER_ACC].add(case_id, 1.0 if correct else 0.0)
 
@@ -1674,13 +1737,23 @@ def _score_scope(
             "has_transcript_record": case_id in preds.transcripts,
             "n_eval_timepoints": len(truth_order),
             "n_missing_timepoints": case_missing,
-            "speaker_permutation": dict(assignment.mapping),
-            "unmatched_reference_speakers": list(assignment.unmatched_ref),
             "wer_edits": case_wer_edits,
             "wer_reference_words": len(reference_tokens),
-            "cpwer_edits": assignment.cpwer_edits,
+            "cpwer_edits": cpwer_assignment.cpwer_edits,
             "cpwer_reference_words": case_cpwer_reference_words,
-            "speaker_match_count": assignment.match_count,
+            "speaker_match_count": attribution.match_count,
+            # Keyed like spec.PERMUTATION_TIE_BREAK: the permutation each metric
+            # was scored under, and what that mapping costs on the other one.
+            "speaker_permutations": {
+                metric: {
+                    "mapping": dict(chosen.mapping),
+                    "unmatched_reference_speakers": list(chosen.unmatched_ref),
+                    "cpwer_edits": chosen.cpwer_edits,
+                    "speaker_match_count": chosen.match_count,
+                }
+                for metric, chosen in assignments.items()
+            },
+            "permutations_differ": permutations_differ,
         }
 
     metrics: dict[str, float | None] = {}
@@ -1733,6 +1806,8 @@ def _score_scope(
         "wer_reference_words": wer_reference_words,
         "cpwer_edits": cpwer_edits,
         "cpwer_reference_words": cpwer_reference_words,
+        # Cases whose cpwer and speaker_attribution_accuracy permutations differ.
+        "n_cases_permutations_differ": n_permutations_differ,
         "metrics": metrics,
         "na_reasons": reasons,
         "per_case": per_case,
@@ -1780,7 +1855,9 @@ def score(truth: GroundTruth, preds: Predictions, track: int) -> dict[str, Any]:
             "missing_transcript_policy": spec.MISSING_TRANSCRIPT_POLICY,
             "interval_rule": spec.INTERVAL_RULE,
             "coverage_level": spec.COVERAGE_LEVEL,
-            "permutation_tie_break": list(spec.PERMUTATION_TIE_BREAK),
+            "permutation_tie_break": {
+                metric: list(rule) for metric, rule in spec.PERMUTATION_TIE_BREAK.items()
+            },
             "text_normalisation": list(spec.TEXT_NORMALISATION),
             "normalise_submitted_probs": spec.NORMALISE_SUBMITTED_PROBS,
             "session_length_sec": spec.SESSION_LENGTH_SEC,
