@@ -622,6 +622,8 @@ class Run:
           only at chance, and the model should not fall below voice-only.
         """
         cap = self.cfg.slots.max_slots
+        two = [c for c in cases if c["N"] == 2]
+        cap2 = min(spec.MAX_SPEAKERS_PER_TRACK[track_for(2)], cap)
         out: dict[str, Any] = {}
         voice_theta, voice_acc = self._voice_reference(cases)
         model_acc = self._accuracy_by_M(cases, theta_by_M, cap)
@@ -631,6 +633,11 @@ class Run:
             c["emb_space"] = c["spatial"]
         space_theta = self._tune_by_M(cases, cap, emb_key="emb_space")
         out["learned_space_only_by_M"] = self._accuracy_by_M(cases, space_theta, cap, emb_key="emb_space")
+        # Like theta_official_by_M for the full model: what eval_t2.py needs to run
+        # this variant on the eval set without the validation data at hand.
+        if two:
+            out["learned_space_only_theta_official_by_M"] = {
+                str(m): t["theta"] for m, t in self._tune_by_M(two, cap2, emb_key="emb_space").items()}
         start, stop, step = self.cfg.slots.weight_grid
         fixed: dict[str, float] = {}
         fixed_w: dict[str, float] = {}
@@ -645,6 +652,12 @@ class Run:
             fixed[str(M)], fixed_w[str(M)] = round(best[0], 4), best[1]
         out["fixed_gate_by_M"] = fixed
         out["fixed_gate_weight_by_M"] = fixed_w
+        if two:
+            for c in two:
+                w = fixed_w[str(c["M"])]
+                c["emb_fixed"] = np.concatenate([math.sqrt(w) * c["spatial"], math.sqrt(1 - w) * c["emb_voice"]], axis=-1)
+            out["fixed_gate_theta_official_by_M"] = {
+                str(m): t["theta"] for m, t in self._tune_by_M(two, cap2, emb_key="emb_fixed").items()}
 
         static = self.collect_cases("static")
         static_theta = self._tune_by_M(static, cap)
