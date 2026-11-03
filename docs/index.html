@@ -1786,7 +1786,7 @@ tr.group-row td {
               </div>
               <div>
                 <dt>모델 평가 트랙 (경량 vs 고성능)</dt>
-                <dd>Track A (경량 Conformer) · Track B (Qwen3-ASR)</dd>
+                <dd>Track A (경량 Conformer) · Track B (VibeVoice-ASR 참고 행)</dd>
               </div>
               <div>
                 <dt>주 평가 지표</dt>
@@ -1817,7 +1817,7 @@ tr.group-row td {
               <strong>사람은 귀가 두 개뿐이지만 앞과 뒤에서 들려오는 소리를 어렵지 않게 구분합니다.</strong> 머리에 의한 회절과 비대칭적인 귓바퀴(pinna) 구조가 음원 방향에 따라 고주파 대역의 음색을 미세하게 바꾸는 <strong>머리전달함수(HRTF, Head-Related Transfer Function)</strong> 단서를 만들어 주기 때문입니다. 반면 스마트폰이나 일상 기기에 내장되는 소형 무지향성 마이크에는 이런 방향성 필터가 없어, 얻을 수 있는 공간 정보가 순수하게 마이크의 개수와 배치로 결정됩니다.
             </p>
             <p>
-              무지향성 마이크 1개만으로는 방향 단서를 얻을 수 없고, 마이크가 2개일 때는 두 마이크를 잇는 축 기준으로 앞뒤 도달 시간차가 같아져 <strong>전후방 뒤집힘(front-back ambiguity)</strong>이 생깁니다. 일직선 밖에 놓인 세 번째·네 번째 마이크(<code>M = 3, 4</code>)가 더해져야 비로소 거울상 대칭이 깨집니다. 하지만 <strong>화자 구분에는 정확한 절대 방향이 아니라 두 사람의 공간 신호가 서로 다르기만 하면 충분합니다.</strong> 앞뒤가 뒤집혀도 두 사람의 도달 시간차가 다르면 구분할 수 있으므로, 4채널에서 공간 특성을 학습한 모델은 마이크 2개(89~94%의 세션에서 두 화자의 도달 시간차가 1샘플 이상 차이 남)로 드롭되어도 높은 화자 구분 이득을 유지할 수 있습니다.
+              무지향성 마이크 1개만으로는 방향 단서를 얻을 수 없고, 마이크가 2개일 때는 두 마이크를 잇는 축 기준으로 앞뒤 도달 시간차가 같아져 <strong>전후방 뒤집힘(front-back ambiguity)</strong>이 생깁니다. 일직선 밖에 놓인 세 번째·네 번째 마이크(<code>M = 3, 4</code>)가 더해져야 비로소 거울상 대칭이 깨집니다. 하지만 <strong>화자 구분에는 정확한 절대 방향이 아니라 두 사람의 공간 신호가 서로 다르기만 하면 충분합니다.</strong> 앞뒤가 뒤집혀도 두 사람의 도달 시간차가 다르면 구분할 수 있으므로, 4채널에서 공간 특성을 학습한 모델은 마이크 2개로 드롭되어도 화자 구분 이득의 상당 부분을 유지할 것으로 기대합니다(평가셋에서 두 화자의 도달 시간차가 1샘플 이상 다른 세션은 마이크 2개 조건의 78~86%, 4개 조건의 97%).
             </p>
           </div>
 
@@ -1843,9 +1843,9 @@ tr.group-row td {
                     <td>음색 특징 없이 위치 정보만으로 4ch에서 학습된 경량 모델이 2ch(스테레오)·1ch 드롭 시 어디까지 성능을 방어하는지(온디바이스 경량 환경의 성능 기준선) 검증</td>
                   </tr>
                   <tr>
-                    <th scope="row">Track B · 고성능 파운데이션 트랙<span class="sys-sub"><code>Qwen3-ASR-0.6B/1.7B</code> + 공간·음색 결합</span></th>
-                    <td>연산 자원이 충분한 조건에서 최신 오픈소스 음성 파운데이션 모델인 <strong><code>Qwen3-ASR</code></strong>에 마이크 수·순서 불변 공간 모듈인 <strong><code>TAC(Transform-Average-Concatenate)</code></strong>와 화자 음색 특징을 결합해 성능을 극대화</td>
-                    <td>4ch에서 공간+음색 결합으로 끌어올린 다화자 전사(<code>cpWER</code>) 최고 성능(상한선)이 2ch·1ch 드롭 시에도 흔들림 없이 유지되는지 검증</td>
+                    <th scope="row">Track B · 고성능 파운데이션 트랙<span class="sys-sub"><code>VibeVoice-ASR</code> (화자 구분 ASR, 9B) · 참고 행</span></th>
+                    <td>연산 자원이 충분할 때 쓸 수 있는 공개 파운데이션 모델 <strong><code>VibeVoice-ASR</code></strong>(Microsoft, MIT)은 마이크 한 개의 음성만 듣고 화자 구분과 전사를 한 번에 합니다. 공간 정보 없이 <strong>목소리와 문맥만으로</strong> 얼마나 가르는지를 재서 4채널 공간 모델과 비교하는 기준으로 씀</td>
+                    <td>마이크 수와 무관한 목소리 기반 최신 모델의 <code>Spk Acc</code>·<code>cpWER</code>를 재고, 제안 모델이 <code>M = 2~4</code>에서 이를 넘는지 비교 (20초 전체를 보고 답하므로 인과 조건이 아닌 참고 행)</td>
                   </tr>
                 </tbody>
               </table>
@@ -1881,7 +1881,7 @@ tr.group-row td {
                 <div class="pipe-arrow" aria-hidden="true">→</div>
                 <div class="pipe-stage">
                   <h4>가변 채널 처리기 (Track A / Track B)</h4>
-                  <p>위상 정규화 교차상관(<code>GCC-PHAT</code>) 및 채널 수·순서 불변 블록(<code>TAC</code>)을 통한 공간 특징 추출과 ASR 백엔드(경량 <code>Conformer</code> 또는 <code>Qwen3-ASR</code>) 기반 발화 분리·전사</p>
+                  <p>위상 정규화 교차상관(<code>GCC-PHAT</code>) 및 채널 수·순서 불변 블록(<code>TAC</code>)을 통한 공간 특징 추출과 화자 슬롯 귀속, 그리고 예측 화자 구간마다 고정(frozen) ASR 백엔드로 전사(ASR 백엔드 자체는 화자를 구분하지 않음)</p>
                 </div>
                 <div class="pipe-arrow" aria-hidden="true">→</div>
                 <div class="pipe-stage">
@@ -1895,7 +1895,7 @@ tr.group-row td {
           <div class="subtopic-block">
             <h3 id="task-hz" class="subtopic-h3" data-subtopic="1.2 오디오 샘플링 규격(16 kHz) 및 음향 특징 처리"><span class="sub-num">1.2</span>오디오 샘플링 규격(16 kHz) 및 음향 특징 처리</h3>
             <p>
-              본 과제의 2화자 교대 발화 시뮬레이션 평가셋(<code>eval-t2</code>, 4.1절 참조)과 실측 회의 데이터셋(<code>LibriCSS</code>, <code>AMI</code>), 그리고 Track A(<code>Conformer</code>)와 Track B(<code>Qwen3-ASR</code>)의 모든 오디오 입출력은 <strong>단일 샘플링 주파수 <code>16,000 Hz (16 kHz)</code></strong>로 엄격히 통일하여 처리합니다. 원천 코퍼스가 다른 레이트로 녹음된 경우에도 전처리 단계에서 <code>16,000 Hz</code> 대역제한 싱크 보간(Sinc Resampling) 및 <code>16-bit PCM (pcm_s16le)</code>으로 정규화합니다.
+              본 과제의 2화자 교대 발화 시뮬레이션 평가셋(<code>eval-t2</code>, 4.1절 참조)과 학습 데이터, 그리고 모든 시스템의 오디오 입력은 <strong>단일 샘플링 주파수 <code>16,000 Hz (16 kHz)</code></strong>로 엄격히 통일하여 처리합니다. 원천 코퍼스가 다른 레이트로 녹음된 경우에도 전처리 단계에서 <code>16,000 Hz</code> 대역제한 싱크 보간(Sinc Resampling) 및 <code>16-bit PCM (pcm_s16le)</code>으로 정규화합니다. Track B의 <code>VibeVoice-ASR</code>만 자체 전처리기로 입력을 다시 표본화합니다.
             </p>
             <div tabindex="0" role="region" aria-labelledby="cap-hz-spec" class="table-wrap">
               <table class="stackable" style="--label-2: '설정 수치 (Hz / 시간)'; --label-3: '물리적·모델링 채택 근거';">
@@ -1911,7 +1911,7 @@ tr.group-row td {
                   <tr>
                     <th scope="row">원시 오디오 샘플링 레이트<span class="sys-sub">Raw Waveform Sampling Rate</span></th>
                     <td class="mono"><strong>16,000 Hz (16 kHz)</strong><span class="sys-sub">나이퀴스트 주파수 8,000 Hz</span></td>
-                    <td>인간 음성의 핵심 포먼트(<code>300 ~ 3,400 Hz</code>)와 마찰음/파열음 고주파 에너지(<code>~ 8,000 Hz</code>)를 온전히 보존하면서, <code>LibriSpeech</code>·<code>LibriCSS</code> 원천 규격 및 <code>Conformer</code>·<code>Qwen3-ASR</code>·<code>ECAPA-TDNN</code>의 사전학습 입력 주파수와 리샘플링 손실 없이 1:1 일치</td>
+                    <td>인간 음성의 핵심 포먼트(<code>300 ~ 3,400 Hz</code>)와 마찰음/파열음 고주파 에너지(<code>~ 8,000 Hz</code>)를 온전히 보존하면서, <code>LibriSpeech</code> 원천 규격 및 <code>ECAPA-TDNN</code>·<code>wav2vec2</code> 등 사전학습 모델의 입력 주파수와 리샘플링 손실 없이 1:1 일치</td>
                   </tr>
                   <tr>
                     <th scope="row">1샘플당 시간 및 공간 이동 거리<span class="sys-sub">TDOA Sample Resolution</span></th>
@@ -1931,7 +1931,7 @@ tr.group-row td {
                   <tr>
                     <th scope="row">ASR 음향 특징 프레임 레이트<span class="sys-sub">80-dim Log-Mel &amp; Subsampling</span></th>
                     <td class="mono"><strong>100 Hz → 25 Hz (4× 축소)</strong><span class="sys-sub">Mel 대역: 20 Hz ~ 7,600 Hz</span></td>
-                    <td><code>16 kHz</code> 파형에서 추출한 <code>100 Hz</code> 80차원 Log-Mel 필터뱅크를 Conv2D 4배 다운샘플링하여 <strong><code>25 Hz</code>(40 ms 단위)</strong> 토큰 시퀀스로 변환 후 <code>Conformer</code> 및 <code>Qwen3-ASR</code> 인코더에 공급</td>
+                    <td><code>16 kHz</code> 파형에서 추출한 <code>100 Hz</code> 80차원 Log-Mel 필터뱅크를 Conv2D 4배 다운샘플링하여 <strong><code>25 Hz</code>(40 ms 단위)</strong> 토큰 시퀀스로 변환 후 <code>Conformer</code> 인코더에 공급</td>
                   </tr>
                   <tr>
                     <th scope="row">인과적 청크 및 귀속 출력 레이트<span class="sys-sub">Causal Chunk &amp; Attribution Rate</span></th>
@@ -1972,7 +1972,7 @@ tr.group-row td {
                   <tr>
                     <th scope="row">2. Space-only (공간 전용)<span class="sys-sub"><code>SRP-PHAT</code> 방위 분포 + 군집</span></th>
                     <td>음색 정보를 배제하고 마이크 간 위상차를 전 방위로 조향하는 <code>SRP-PHAT(Steered Response Power with Phase Transform)</code> 36-bin 방위 분포(360°를 10° 간격 36개 구간으로 나눈 확률 분포)만으로 화자 슬롯 배정</td>
-                    <td><code>M = 4</code>에서 매우 우수하고 <code>M = 2</code>에서도 상당 부분 유지되나, <code>M = 1</code>에서는 위상차 소멸로 무작위 수준(<code>0.500</code>)으로 붕괴</td>
+                    <td><code>M = 4</code>에서 매우 우수하고 <code>M = 2</code>에서도 상당 부분 유지되나, <code>M = 1</code>에서는 위상차가 사라져 모든 시점이 한 슬롯으로 몰리므로 다수 화자의 발화 비율(<code>0.659</code>) 수준으로 떨어짐</td>
                   </tr>
                   <tr>
                     <th scope="row">3. Naive Fusion (단순 결합)<span class="sys-sub">음색 + 공간 점수 고정 가중합</span></th>
@@ -1981,8 +1981,8 @@ tr.group-row td {
                   </tr>
                   <tr>
                     <th scope="row">4. Proposed (제안 귀속 모델)<span class="sys-sub"><code>TAC</code> + <code>ECAPA</code> + Gated <code>GRU</code></span></th>
-                    <td>마이크 수·순서 불변 블록 <strong><code>TAC(Transform-Average-Concatenate)</code></strong>로 추출한 다채널 공간 특징 벡터(<code>s</code>)와 화자 음색 임베딩(<code>v</code>)을 학습 각도 파라미터(<code>a</code>) 기반 정규화 게이트(<code>z = [sin(a)·s, cos(a)·v]</code>)로 결합하고 <strong>채널 드롭아웃</strong>으로 학습</td>
-                    <td><code>M = 4</code>의 정밀한 공간 분리 능력을 학습한 뒤, <code>M = 2</code>·<code>M = 1</code> 드롭 시에도 공유 가중치와 적응형 게이트로 최고 성능 유지</td>
+                    <td>마이크 수·순서 불변 블록 <strong><code>TAC(Transform-Average-Concatenate)</code></strong>로 추출한 다채널 공간 특징 벡터(<code>s</code>)와 화자 음색 임베딩(<code>v</code>)을 게이트 신경망이 청크마다 공간 상태·마이크 수·발화 비율로부터 내는 각도(<code>a</code>)로 결합(<code>z = [sin(a)·s, cos(a)·v]</code>)하고 <code>M = 2~4</code> <strong>채널 드롭아웃</strong>으로 학습. 공간 경로는 위치 식별 손실로만 학습하고 게이트는 음색을 입력받지 않음</td>
+                    <td>하나의 가중치로 <code>M = 2~4</code>에서 음색 전용보다 높은 귀속 정확도를 내는지 검증. <code>M = 1</code>에서는 공간 가중치가 구조상 0이 되어 음색 전용(1번)과 같은 출력</td>
                   </tr>
                   <tr class="group-row">
                     <td colspan="3">종단간(End-to-End) ASR 확장 실험 트랙 — 온디바이스 경량(Track A) vs 고성능 파운데이션(Track B)</td>
@@ -1993,9 +1993,9 @@ tr.group-row td {
                     <td>4ch에서 학습된 공간-스펙트럼 어텐션이 2ch(스테레오) 및 1ch 드롭 시에도 화자 구분 단서를 얼마나 보존하는지 검증</td>
                   </tr>
                   <tr>
-                    <th scope="row">Track B · 고성능 <code>Qwen3-ASR</code> 결합<span class="sys-sub"><code>Qwen3-ASR-0.6B/1.7B</code> + <code>TAC</code>·음색</span></th>
-                    <td>최신 오픈소스 파운데이션 ASR인 <strong><code>Qwen3-ASR-0.6B / 1.7B</code></strong>를 전사 백엔드로 삼고, 4번 제안 모델의 가변 채널 <code>TAC</code> 공간·음색 귀속 모듈(또는 멀티채널 어댑터)을 결합</td>
-                    <td>4ch 다화자 대화에서 최저 <code>cpWER</code> 상한선을 달성하고, 2ch 유튜브/일상 스테레오 환경으로 드롭될 때의 실용적 성능 입증</td>
+                    <th scope="row">Track B · 화자 구분 파운데이션 ASR<span class="sys-sub"><code>VibeVoice-ASR</code> · 참고 행</span></th>
+                    <td>마이크 한 개(활성 마이크 중 가장 낮은 번호)의 20초 전체를 듣고 <code>화자 · 시작–끝 시각 · 텍스트</code>를 한 번에 내는 공개 파운데이션 모델 <strong><code>VibeVoice-ASR</code></strong>(9B, MIT). 공간 정보를 쓰지 않음</td>
+                    <td>어느 마이크를 듣는지 외에는 <code>M</code>과 무관. 목소리 기반 최신 모델의 수준을 보여 주는 기준선이며, 인과 조건이 아니므로 공식 표 밖의 참고 행(<code>full_audio</code>)</td>
                   </tr>
                 </tbody>
               </table>
@@ -2005,7 +2005,7 @@ tr.group-row td {
           <div class="subtopic-block">
             <h3 id="colab-notebooks" class="subtopic-h3" data-subtopic="2.2 Colab 실행 노트북 및 재현 환경"><span class="sub-num">2.2</span>Colab 실행 노트북 및 재현 환경</h3>
             <p>
-              별도의 로컬 환경 설정 없이 브라우저에서 데이터셋 검증, 통제 베이스라인 채점, 그리고 <strong>Track A(초경량 Conformer)</strong> 및 <strong>Track B(<code>Qwen3-ASR</code>)</strong> 실험을 바로 실행하고 재현할 수 있는 Google Colab 노트북입니다.
+              별도의 로컬 환경 설정 없이 브라우저에서 데이터셋 검증, 통제 베이스라인 채점, 그리고 <strong>Track A(초경량 Conformer)</strong> 및 <strong>Track B(<code>VibeVoice-ASR</code>)</strong> 실험을 바로 실행하고 재현할 수 있는 Google Colab 노트북입니다.
             </p>
             <div class="colab-grid" role="list" aria-label="Colab 실행 노트북 목록">
               <div class="colab-card" role="listitem">
@@ -2017,7 +2017,7 @@ tr.group-row td {
                     </a>
                   </div>
                   <p style="margin-block-start: 0.45rem;">
-                    통제 비교 베이스라인(<code>Voice-only</code>, <code>Space-only</code>, <code>Naive fusion</code>) 추론과 <code>evaluate.py</code> 공식 채점기를 브라우저에서 바로 실행하여 채널 수(<code>M = 4 → 3 → 2 → 1</code>)별 <code>Spk Acc</code> 및 <code>cpWER</code>을 확인합니다.
+                    단일 화자 평가셋(<code>eval-dev</code>)에서 <code>SRP-PHAT</code> 공간 베이스라인 추론과 <code>evaluate.py</code> 공식 채점기를 브라우저에서 재현하고, 마이크 수별 방위 오차를 확인합니다. 2화자 리더보드(6.1절)의 <code>Spk Acc</code>·<code>cpWER</code>은 <code>eval_t2.py</code>로 재현합니다.
                   </p>
                 </div>
                 <div class="colab-card-foot">
@@ -2065,18 +2065,18 @@ tr.group-row td {
               <div class="colab-card" role="listitem">
                 <div>
                   <div class="colab-card-head">
-                    <h4>4. Track B · Qwen3-ASR + 공간·음색 결합</h4>
-                    <a class="colab-badge-link" href="https://colab.research.google.com/github/hd1534/variable-channel-spatial-asr/blob/main/notebooks/track_b_qwen3_asr.ipynb" target="_blank" rel="noopener" aria-label="track_b_qwen3_asr.ipynb Open in Colab">
+                    <h4>4. Track B · VibeVoice-ASR 화자 구분 참고 행</h4>
+                    <a class="colab-badge-link" href="https://colab.research.google.com/github/hd1534/variable-channel-spatial-asr/blob/main/notebooks/track_b_vibevoice.ipynb" target="_blank" rel="noopener" aria-label="track_b_vibevoice.ipynb Open in Colab">
                       <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab">
                     </a>
                   </div>
                   <p style="margin-block-start: 0.45rem;">
-                    <code>Qwen/Qwen3-ASR-0.6B · 1.7B</code> 파운데이션 백엔드와 가변 채널 공간·음색 모듈을 결합하여 <code>eval-t2</code> 및 실측 <code>LibriCSS</code>에서 다화자 <code>cpWER</code> 상한선을 평가합니다.
+                    <code>microsoft/VibeVoice-ASR</code>로 <code>eval-t2</code>·<code>eval-t2-static</code>의 세션마다 화자 구분 전사를 만들어 Drive에 남기고, 채점은 로컬의 <code>track_b.py</code>로 합니다.
                   </p>
                 </div>
                 <div class="colab-card-foot">
-                  <span class="mono">notebooks/track_b_qwen3_asr.ipynb</span>
-                  <span class="badge">Track B (Colab Pro+ GPU)</span>
+                  <span class="mono">notebooks/track_b_vibevoice.ipynb</span>
+                  <span class="badge">A100 · L4 (bf16)</span>
                 </div>
               </div>
             </div>
@@ -2100,7 +2100,7 @@ tr.group-row td {
           <div class="subtopic-block">
             <h3 id="sim-wave" class="subtopic-h3" data-subtopic="3.1 채널 드롭(4→2→1ch)에 따른 파동·위상 시각화"><span class="sub-num">3.1</span>채널 드롭(<code>4ch → 2ch → 1ch</code>)에 따른 파동 전파 및 위상차 시각화</h3>
             <p>
-              2화자 교대 발화 환경을 도식화한 아래 대화형 시뮬레이터에서 <strong>채널 드롭 버튼(<code>M = 4</code>, <code>M = 3</code>, <code>M = 2 스테레오</code>, <code>M = 1 모노</code>)</strong>을 선택해 활성 마이크 수에 따른 변화를 비교할 수 있습니다. <code>M = 4</code>에서는 6개 마이크 쌍의 교차로 단일 방향 빔이 정확히 화자를 가리키고, <code>M = 2</code>로 드롭되면 전후방 거울상(점선 부엽)이 생기지만 <strong>화자 A(청록색)와 화자 B(노란색)의 도달 시간차(<code>Δτ</code>) 피크 위치는 여전히 서로 분리</strong>되어 4채널에서 학습된 공간 귀속 능력이 그대로 유지됩니다. <strong><code>🔊 공간 음향 듣기</code></strong>를 켜면 각 화자의 위치에 따른 스테레오/모노 지연 합성음도 함께 확인할 수 있습니다.
+              2화자 교대 발화 환경을 도식화한 아래 대화형 시뮬레이터에서 <strong>채널 드롭 버튼(<code>M = 4</code>, <code>M = 3</code>, <code>M = 2 스테레오</code>, <code>M = 1 모노</code>)</strong>을 선택해 활성 마이크 수에 따른 변화를 비교할 수 있습니다. <code>M = 4</code>에서는 6개 마이크 쌍의 교차로 단일 방향 빔이 정확히 화자를 가리키고, <code>M = 2</code>로 드롭되면 전후방 거울상(점선 부엽)이 생기지만 <strong>화자 A(청록색)와 화자 B(노란색)의 도달 시간차(<code>Δτ</code>) 피크 위치는 여전히 서로 분리</strong>되어 공간 단서로 두 화자를 구분할 여지가 남습니다(평가셋에서 두 화자의 도달 시간차가 1샘플 이상 다른 세션은 <code>M = 2</code>의 78~86%). <strong><code>🔊 공간 음향 듣기</code></strong>를 켜면 각 화자의 위치에 따른 스테레오/모노 지연 합성음도 함께 확인할 수 있습니다.
             </p>
 
             <div class="manim-studio" role="region" aria-label="다화자 공간 음향 및 채널 드롭 시뮬레이터">
@@ -2139,7 +2139,7 @@ tr.group-row td {
           <div class="subtopic-block">
             <h3 id="ex-audio" class="subtopic-h3" data-subtopic="3.2 합성 평가셋 샘플 파형 비교 (4ch vs 1ch)"><span class="sub-num">3.2</span>합성 평가셋 샘플 파형 청취 비교: 4채널 빔포밍 vs 1채널 드롭 오디오</h3>
             <p>
-              본 과제의 시뮬레이션 평가셋(<code>eval-t2</code>)에 수록된 대표 샘플 세션(<code>sess_0008</code>, 가상 방 <code>4.00 × 3.62 × 2.67 m</code>, 소리가 60 dB 감쇠하는 잔향 시간 <code>RT60 = 0.24 s</code>)의 실제 오디오 파형입니다. 4채널(<code>M = 4</code>) 위상 정렬 파형과 단일 채널(<code>M = 1</code>)로 드롭된 원음을 직접 재생해 비교할 수 있습니다.
+              단일 화자 평가셋(<code>eval-dev</code>)의 샘플 세션(<code>sess_0008</code>, 가상 방 <code>4.00 × 3.62 × 2.67 m</code>, 소리가 60 dB 감쇠하는 잔향 시간 <code>RT60 = 0.24 s</code>)의 실제 오디오 파형입니다. 4채널(<code>M = 4</code>) 위상 정렬 파형과 단일 채널(<code>M = 1</code>)로 드롭된 원음을 직접 재생해 비교할 수 있습니다. 페이지 용량 때문에 3초 구간을 8 kHz로 낮춰 담았습니다.
             </p>
             <div class="audio-pair">
               <div class="audio-box">
@@ -2164,12 +2164,12 @@ tr.group-row td {
 
         <section class="chapter-section" id="sim-dataset">
           <h2 id="ch-sim-dataset" class="chapter-h2" data-d1-title="4. 시뮬레이션 설계 및 실측 데이터셋 비교"><span class="sec-num">4.</span>시뮬레이션 설계 및 실측 회의 데이터셋 비교</h2>
-          <p class="chapter-lead">왜 통제된 실내 음향 시뮬레이션(<code>eval-t2</code>)과 실제 회의실 원형 어레이 녹음(<code>LibriCSS</code>)을 병행해야 하는지 설명합니다.</p>
+          <p class="chapter-lead">본 평가를 통제된 실내 음향 시뮬레이션(<code>eval-t2</code>)으로 하는 이유와, 실측 회의 데이터셋(<code>LibriCSS</code>, <code>AMI</code>)을 이번 평가에 쓰지 않는 이유를 설명합니다.</p>
 
           <div class="subtopic-block">
-            <h3 id="sim-why-both" class="subtopic-h3" data-subtopic="4.1 표준 다채널 데이터셋 비교 및 2단계 평가 구성"><span class="sub-num">4.1</span>표준 다채널 데이터셋 비교 및 2단계(합성 + 실측) 평가 구성</h3>
+            <h3 id="sim-why-both" class="subtopic-h3" data-subtopic="4.1 표준 다채널 데이터셋 비교와 평가셋 선택"><span class="sub-num">4.1</span>표준 다채널 데이터셋 비교와 평가셋 선택</h3>
             <p>
-              학계의 대표적인 다채널 회의 데이터셋(<code>LibriCSS</code>, <code>AMI</code>, <code>AliMeeting</code>)은 각 사람 앞에 개별 마이크를 둔 것이 아니라, <strong>회의실 테이블 중앙에 놓인 7~8채널 소형 원형 마이크 어레이 1대(직경 8.5~20 cm)</strong>로 주변 화자들을 동시에 녹음한 데이터입니다. 본 벤치마크는 ① 음원·잔향·잡음을 완벽히 통제한 상태에서 오직 채널 드롭(<code>4ch → 3ch → 2ch → 1ch</code>)의 순수 효과만 분리하는 <strong>Stage 1 합성 다화자 평가셋(<code>eval-t2</code>)</strong>과, ② 실제 회의실 7채널 원형 어레이 녹음에서 4/2/1채널 부분집합을 추출해 현실 일반화 성능을 검증하는 <strong>Stage 2 실측 평가셋(<code>LibriCSS</code>)</strong>을 함께 사용합니다.
+              학계의 대표적인 다채널 회의 데이터셋(<code>LibriCSS</code>, <code>AMI</code>, <code>AliMeeting</code>)은 각 사람 앞에 개별 마이크를 둔 것이 아니라, <strong>회의실 테이블 중앙에 놓인 7~8채널 소형 원형 마이크 어레이 1대(직경 8.5~20 cm)</strong>로 주변 화자들을 동시에 녹음한 데이터입니다. 본 벤치마크는 음원·잔향·잡음을 통제한 상태에서 채널 드롭(<code>4ch → 3ch → 2ch → 1ch</code>)의 효과만 분리하는 <strong>합성 2화자 평가셋(<code>eval-t2</code>)</strong>으로 평가합니다. 실측 데이터셋은 세션 구조가 채점 계약(20초, 화자 2명, 교대 발화)과 맞지 않고 배열 기하도 달라 이번 평가에서는 쓰지 않습니다.
             </p>
             <div tabindex="0" role="region" aria-labelledby="cap-real-datasets" class="table-wrap">
               <table class="stackable" style="--label-2: '마이크 어레이 물리 구조'; --label-3: '본 과제에서의 활용 및 채널 드롭 구성';">
@@ -2183,14 +2183,14 @@ tr.group-row td {
                 </thead>
                 <tbody>
                   <tr>
-                    <th scope="row">Stage 1 · <code>eval-t2</code> / <code>eval-t2-static</code><span class="sys-sub">본 과제 통제 시뮬레이션 (200세션)</span></th>
+                    <th scope="row">본 평가 · <code>eval-t2</code> / <code>eval-t2-static</code><span class="sys-sub">본 과제 통제 시뮬레이션 (200세션)</span></th>
                     <td>반경 <code>5 ~ 12 cm</code> 비대칭 4채널 평면 어레이 (<code>16,000 Hz</code>, 세션당 <code>20.0 s</code>, 2화자 2~4턴 교대 발화, 이동 발화 + 등방성 확산 잡음 SNR 5~20 dB)</td>
                     <td><strong>주 평가셋:</strong> 동일 발화·동일 실내 RIR 위에서 200세션 × 채널 마스크 6종(<code>1111, 1110, 1010, 1100, 1000, 0010</code>) = 총 1,200케이스를 구성해 공간 전이 효과를 정밀 측정</td>
                   </tr>
                   <tr>
-                    <th scope="row">Stage 2 · <code>LibriCSS</code><span class="sys-sub">실제 회의실 원형 어레이 재녹음</span></th>
+                    <th scope="row">미사용 · <code>LibriCSS</code><span class="sys-sub">실제 회의실 원형 어레이 재녹음</span></th>
                     <td>회의실 테이블 중앙 <strong>7채널 원형 어레이 1대</strong>(반경 <code>4.25 cm</code>, 중앙 1 + 원주 6개, <code>16,000 Hz</code>). 어레이 주변 8개 라우드스피커에서 다화자 발화 재생·실측 녹음</td>
-                    <td><strong>실측 확장 평가셋:</strong> 7채널 중 직교 4채널(<code>M = 4</code>) → 대향 2채널(<code>M = 2</code>) → 중앙 1채널(<code>M = 1</code>) 서브셋을 추출해 실제 캡슐 편차·회절 환경 검증</td>
+                    <td><strong>쓰지 않음:</strong> 10분 미니세션마다 화자 8명이 겹쳐 말해 2화자 20초 채점 계약에 맞지 않고, 원주 6개 + 중앙 1개 배열에서는 본 평가 배열 같은 4채널 부분집합이나 <code>M = 3</code> 조건을 만들 수 없음</td>
                   </tr>
                   <tr>
                     <th scope="row">참조 · <code>AMI</code> / <code>AliMeeting</code><span class="sys-sub">실제 대면 회의 코퍼스</span></th>
@@ -2215,7 +2215,7 @@ tr.group-row td {
 
         <section class="chapter-section" id="geo-array">
           <h2 id="ch-geo-array" class="chapter-h2" data-d1-title="5. 배열 기하와 채널 드롭의 물리학"><span class="sec-num">5.</span>배열 기하와 채널 드롭의 물리학</h2>
-          <p class="chapter-lead">소구경 4채널 어레이에서 추출한 위상·레벨 단서가 채널 드롭아웃 학습을 통해 2채널(스테레오)과 1채널(모노)로 전이되는 기하학적·신호처리적 메커니즘을 설명합니다.</p>
+          <p class="chapter-lead">소구경 4채널 어레이에서 추출한 위상·레벨 단서가 마이크 수가 4 → 3 → 2로 줄 때 어떻게 바뀌는지(1채널에서는 사라짐)와, 채널 드롭아웃 학습이 이를 어떻게 다루는지를 기하학·신호처리 관점에서 설명합니다.</p>
 
           <div class="subtopic-block">
             <h3 id="geo-layout" class="subtopic-h3" data-subtopic="5.1 4채널 평면 배열 기하와 6종 채널 드롭 마스크"><span class="sub-num">5.1</span>4채널 평면 배열 기하와 6종 채널 드롭 마스크</h3>
@@ -2262,7 +2262,7 @@ tr.group-row td {
                     <tbody>
                       <tr>
                         <th scope="row"><code>M = 4</code> (전체 활성)<span class="sys-sub">마스크 <code>1111</code> · 6개 쌍</span></th>
-                        <td>6개 마이크 쌍의 교차 상관(TDOA)이 결합되어 360° 전 방위에서 주엽(Main Lobe)이 단일 방향으로 첨예하게 수렴 (방위각 평균 절대 오차 <code>Az MAE 6.77°</code>). 공간 특징 학습의 기준점(Teacher 역할)</td>
+                        <td>6개 마이크 쌍의 교차 상관(TDOA)이 결합되어 360° 전 방위에서 주엽(Main Lobe)이 단일 방향으로 첨예하게 수렴 (단일 화자 <code>eval-dev</code>에서 <code>SRP-PHAT</code> 방위각 평균 절대 오차 <code>Az MAE 6.77°</code>). 공간 특징 학습의 기준점(Teacher 역할)</td>
                       </tr>
                       <tr>
                         <th scope="row"><code>M = 3</code> (1채널 드롭)<span class="sys-sub">마스크 <code>1110</code> · 3개 쌍</span></th>
@@ -2270,11 +2270,11 @@ tr.group-row td {
                       </tr>
                       <tr>
                         <th scope="row"><code>M = 2</code> (스테레오 드롭)<span class="sys-sub">마스크 <code>1010</code> / <code>1100</code> · 1개 쌍</span></th>
-                        <td>마이크 2개만 남으면 배열 축 기준 전후방 대칭(두 봉우리 분포)이 발생하나, <strong>두 화자의 도달 시간차가 서로 다른 비율은 89~94% 유지</strong>되어 다채널 학습 표현으로 화자 분리 가능</td>
+                        <td>마이크 2개만 남으면 배열 축 기준 전후방 대칭(두 봉우리 분포)이 발생하나, <strong>두 화자의 도달 시간차가 1샘플 이상 다른 세션은 78~86%</strong>(마스크 <code>1100</code> 77.5%, <code>1010</code> 86%). 1샘플은 원거리 근사의 기준일 뿐, 이보다 차이가 작은 세션도 잔향·레벨 차이 덕분에 공간 단서로 일부 구분됨</td>
                       </tr>
                       <tr>
                         <th scope="row"><code>M = 1</code> (모노 드롭)<span class="sys-sub">마스크 <code>1000</code> / <code>0010</code> · 0개 쌍</span></th>
-                        <td>채널 간 위상차는 0이 되지만, <code>TAC</code> 평균 풀링 경로를 통해 다채널과 가중치를 공유한 인코더가 스펙트럼·음색·반사 특성을 활용해 화자 귀속 수행</td>
+                        <td>채널 간 위상차가 없어 공간 단서가 사라짐. 제안 모델은 이때 공간 가중치가 구조상 0이 되어 음색 임베딩(<code>ECAPA</code>)만으로 화자를 귀속</td>
                       </tr>
                     </tbody>
                   </table>
@@ -2298,23 +2298,23 @@ tr.group-row td {
                 <tbody>
                   <tr>
                     <th scope="row"><strong>H1</strong> · 4ch→2ch 드롭 시 높은 공간 방어율<span class="sys-sub">스테레오 환경에서의 공간 전이</span></th>
-                    <td>절대 방위 추정(<code>Az MAE</code>)은 <code>M = 3 → 2</code> 드롭 시 전후방 대칭으로 급격히 나빠지지만(<code>9.51° → 53.12°</code>), <strong>화자 구분에는 두 화자의 TDOA가 서로 다르기만 하면 충분</strong>합니다. 따라서 4ch에서 학습된 모델은 <code>M = 2</code>(스테레오)로 드롭되어도 공간 분리 이득의 대부분을 유지합니다.</td>
+                    <td>절대 방위 추정(<code>Az MAE</code>)은 <code>M = 3 → 2</code> 드롭 시 전후방 대칭으로 급격히 나빠지지만(단일 화자 <code>eval-dev</code>의 <code>SRP-PHAT</code> 기준 <code>9.51° → 53.12°</code>), <strong>화자 구분에는 두 화자의 TDOA가 서로 다르기만 하면 충분</strong>합니다. 따라서 4ch에서 학습된 모델은 <code>M = 2</code>(스테레오)로 드롭되어도 공간 분리 이득의 대부분을 유지합니다.</td>
                     <td><code>M = 4 → 3 → 2</code> 드롭 시 <code>Spk Acc</code>·<code>cpWER</code> 유지율을 방위 오차 변화와 비교</td>
                   </tr>
                   <tr>
-                    <th scope="row"><strong>H2</strong> · 채널 드롭아웃 학습의 1ch·2ch 표현력 향상</th>
-                    <td>4채널과 1~2채널 입력이 <code>TAC</code> 및 <code>Conformer</code> 가중치를 공유하며 채널 드롭아웃으로 함께 학습되면, 저채널 전용으로 따로 학습한 모델이나 드롭아웃 없이 학습한 모델보다 <code>M = 2</code>·<code>M = 1</code> 성능이 뚜렷이 높습니다.</td>
-                    <td>채널 드롭아웃 적용 유무에 따른 <code>M = 2</code> 및 <code>M = 1</code> <code>cpWER</code>·<code>Spk Acc</code> 대조</td>
+                    <th scope="row"><strong>H2</strong> · 채널 드롭아웃 학습의 2ch·3ch 표현력 향상</th>
+                    <td>4채널과 2~3채널 입력이 <code>TAC</code> 가중치를 공유하며 채널 드롭아웃으로 함께 학습되면, 드롭아웃 없이 <code>M = 4</code>로만 학습한 같은 모델보다 <code>M = 2</code>·<code>M = 3</code> 성능이 높습니다. <code>M = 1</code>에서는 두 모델 모두 구조상 음색 전용과 같습니다.</td>
+                    <td>채널 드롭아웃 적용 유무(<code>configs/proposed_carry.json</code> vs <code>proposed_carry_nodrop.json</code>)에 따른 <code>M = 2</code>·<code>M = 3</code> <code>Spk Acc</code>·<code>cpWER</code> 대조</td>
                   </tr>
                   <tr>
-                    <th scope="row"><strong>H3</strong> · 음색이 유사하거나 이동하는 화자에서 공간 단서 우위</th>
-                    <td>동성(Same-gender) 화자 쌍이나 짧은 교대·이동 발화에서는 음색 임베딩(<code>Voice-only</code>)이 흔들리지만, 4ch→2ch 공간 단서를 결합한 모델은 화자 혼동을 크게 줄입니다.</td>
-                    <td>정적 조건(<code>eval-t2-static</code>) vs 이동·잡음 조건(<code>eval-t2</code>)에서의 <code>Voice-only</code> 대비 개선 폭 비교</td>
+                    <th scope="row"><strong>H3</strong> · 음색이 유사한 화자 쌍에서 공간 단서 우위</th>
+                    <td>동성(Same-gender) 화자 쌍에서는 음색 임베딩(<code>Voice-only</code>)이 흔들리지만, 4ch→2ch 공간 단서를 결합한 모델은 화자 혼동을 크게 줄입니다.</td>
+                    <td>화자 쌍의 성별 구성별(<code>eval-t2</code>의 이성 102·여성끼리 49·남성끼리 49세션) <code>Voice-only</code> 대비 개선 폭 비교. 정적 조건과 주 조건은 이동과 잡음이 함께 달라 둘을 가를 수 없으므로 참고로만 봄</td>
                   </tr>
                   <tr>
-                    <th scope="row"><strong>H4</strong> · 1ch 극단 드롭 및 거울상 충돌 시 음색 단서로의 안전한 폴백</th>
-                    <td><code>M = 1</code>로 완전히 드롭되거나 <code>M = 2</code>에서 두 화자가 우연히 거울상 대칭 위치에 놓일 때, 적응형 게이트(<code>Proposed</code> / <code>Track B</code>)는 공간 가중치를 낮추고 음색·문맥 단서로 부드럽게 폴백하여 성능 붕괴를 막습니다.</td>
-                    <td><code>M = 1</code>에서 <code>Space-only</code>(<code>0.500</code> 붕괴) 대비 <code>Proposed</code>·<code>Track B</code>의 방어 성능 확인</td>
+                    <th scope="row"><strong>H4</strong> · 음색 전용 아래로 떨어지지 않는 안전한 폴백</th>
+                    <td><code>M = 1</code>에서는 공간 가중치가 구조상 0이 되어 제안 모델이 음색 전용과 같아지고, <code>M = 2~4</code>에서는 게이트가 공간 상태와 마이크 수에 따라 공간 비중을 조절하므로 어떤 마이크 수에서도 음색 전용보다 나빠지지 않아야 합니다. 단, 게이트는 두 화자가 거울상 위치에 있는지 알 수 없으므로 그 경우의 폴백은 보장하지 않습니다.</td>
+                    <td>모든 <code>M</code>에서 <code>Proposed</code>와 <code>Voice-only</code>의 <code>Spk Acc</code> 차이를 같은 세션끼리 비교(<code>M = 1</code>에서는 두 값이 같아야 함. <code>Space-only</code>는 <code>0.659</code>)</td>
                   </tr>
                 </tbody>
               </table>
@@ -2324,7 +2324,7 @@ tr.group-row td {
           <div class="subtopic-block">
             <h3 id="ex-hist" class="subtopic-h3" data-subtopic="5.3 채널 수(M=4→3→2→1)에 따른 36-bin 공간 분포 실측"><span class="sub-num">5.3</span>채널 수(<code>M = 4 → 3 → 2 → 1</code>)에 따른 36-bin 공간 확률 분포 실측</h3>
             <p>
-              동일한 발화 시점(<code>sess_0008</code>, <code>t = 3.75 s</code>, 정답 방위 <code>-89.0°</code>)에서 활성 마이크 수가 4개에서 1개로 줄어들 때 공간 확률 분포가 어떻게 변하는지 보여주는 실측 히스토그램입니다. <code>M = 4</code>와 <code>M = 3</code>에서는 정답 방위 한 곳에 뾰족하게 모이고, <code>M = 2</code>에서는 앞뒤 대칭 두 봉우리로 압축되며(여전히 다른 방향의 화자와 명확히 구분 가능), <code>M = 1</code>에서는 균일 분포로 평탄화됩니다.
+              동일한 발화 시점(<code>sess_0008</code>, <code>t = 3.75 s</code>, 정답 방위 <code>-89.0°</code>)에서 활성 마이크 수가 4개에서 1개로 줄어들 때 공간 확률 분포가 어떻게 변하는지 보여주는 실측 히스토그램입니다. 단일 화자 평가셋(<code>eval-dev</code>)에 학습 없는 <code>SRP-PHAT</code> 베이스라인을 돌린 결과입니다. <code>M = 4</code>와 <code>M = 3</code>에서는 정답 방위 한 곳에 뾰족하게 모이고, <code>M = 2</code>에서는 앞뒤 대칭 두 봉우리로 압축되며, <code>M = 1</code>에서는 균일 분포로 평탄화됩니다.
             </p>
             <div class="hist-readout" id="hist-readout" aria-live="polite">
               <span>점선은 정답 방위(<code>-89.0°</code>, <code>[-90°, -80°)</code> 구간)이며, <code>NLL</code>은 정답 구간의 음의 로그 우도(낮을수록 정답 방향에 확률 집중)입니다. 막대에 마우스를 올리거나 초점을 이동하면 구간 확률이 표시됩니다.</span>
@@ -2396,7 +2396,7 @@ tr.group-row td {
           <div class="subtopic-block">
             <h3 id="lb-main" class="subtopic-h3" data-subtopic="6.1 다화자 본 평가 리더보드 (eval-t2 · 200세션)"><span class="sub-num">6.1</span>다화자 본 평가 리더보드 — 이동 발화 + 확산 잡음 (<code>eval-t2</code>, 200세션 × 6종 마스크 = 1,200케이스)</h3>
             <p>
-              화자가 발화 턴마다 위치를 옮기고 실내 잔향 및 등방성 확산 잡음(SNR 5~20 dB)이 존재하는 <code>eval-t2</code> 본 평가셋에서의 실측 및 벤치마크 결과입니다. 현재 무학습 통제 베이스라인 3종(<code>Voice-only</code>, <code>Space-only</code>, <code>Naive fusion</code>)의 화자 귀속 정확도(<code>Spk Acc</code>) 실측이 완료되었으며, <code>M = 4</code>에서는 순수 공간 단서(<code>0.878</code>)가 음색 단서(<code>0.833</code>)를 크게 앞서고 <code>M = 3</code>(<code>0.853</code>)과 <code>M = 2</code>(<code>0.803</code>)로 드롭되어도 높은 화자 분리 능력을 유지합니다. 신경망 학습 모델(<code>4a/4b Ours</code>, <code>Track A</code>, <code>Track B</code>) 및 종단간 <code>cpWER</code> 수치는 2.2절의 Colab 재현 노트북을 통해 순차 측정·집계됩니다.
+              화자가 발화 턴마다 위치를 옮기고 실내 잔향 및 등방성 확산 잡음(SNR 5~20 dB)이 존재하는 <code>eval-t2</code> 본 평가셋에서의 실측 및 벤치마크 결과입니다. 현재 무학습 통제 베이스라인 3종(<code>Voice-only</code>, <code>Space-only</code>, <code>Naive fusion</code>)의 화자 귀속 정확도(<code>Spk Acc</code>) 실측이 완료되었으며, <code>M = 4</code>에서는 공간 전용(<code>0.878</code>)이 음색 전용(<code>0.833</code>)보다 높지만 <code>M = 2</code>(<code>0.803</code>)에서는 음색 전용보다 낮아집니다. 이 무학습 값들은 임계값을 평가셋에서 고른 낙관적 값입니다. 학습 모델(<code>4a/4b Ours</code>)은 <code>train_template.ipynb</code>로 학습한 뒤 <code>eval_t2.py</code>로, Track B는 <code>track_b_vibevoice.ipynb</code>와 <code>track_b.py</code>로 측정합니다. 종단간 <code>cpWER</code>은 모든 통제 행이 같은 고정 ASR로 예측 화자 구간마다 전사해 채점하며, Track A는 아직 구현 전입니다.
             </p>
             <div tabindex="0" role="region" aria-labelledby="cap-question" class="table-wrap">
               <table id="lb-main-table" style="min-inline-size: 54rem;">
@@ -2443,7 +2443,7 @@ tr.group-row td {
                     <td class="num best">0.878</td>
                     <td class="num">0.853</td>
                     <td class="num">0.803</td>
-                    <td class="num floor">0.500</td>
+                    <td class="num floor">0.659</td>
                     <td class="pending" aria-label="집계 중">—</td>
                     <td class="pending" aria-label="집계 중">—</td>
                     <td class="pending" aria-label="집계 중">—</td>
@@ -2466,7 +2466,7 @@ tr.group-row td {
                   <tr id="row-proposed-reset">
                     <th scope="row">
                       4a. Ours · TAC + ECAPA + GRU (Chunk-Reset)
-                      <span class="sys-sub">4ch→1ch 채널 드롭아웃 학습 · 상태 초기화</span>
+                      <span class="sys-sub"><code>M = 2~4</code> 채널 드롭아웃 학습 · 상태 초기화</span>
                     </th>
                     <td class="pending" aria-label="Colab 측정 대기">측정 대기</td>
                     <td class="pending" aria-label="Colab 측정 대기">측정 대기</td>
@@ -2480,7 +2480,7 @@ tr.group-row td {
                   <tr id="row-proposed-carry">
                     <th scope="row">
                       4b. Ours · TAC + ECAPA + GRU (Carry-Over)
-                      <span class="sys-sub">4ch→1ch 채널 드롭아웃 학습 · 청크 간 상태 유지</span>
+                      <span class="sys-sub"><code>M = 2~4</code> 채널 드롭아웃 학습 · 청크 간 상태 유지</span>
                     </th>
                     <td class="pending" aria-label="Colab 측정 대기">측정 대기</td>
                     <td class="pending" aria-label="Colab 측정 대기">측정 대기</td>
@@ -2492,7 +2492,7 @@ tr.group-row td {
                     <td class="pending" aria-label="Colab 측정 대기">측정 대기</td>
                   </tr>
                   <tr class="group-row">
-                    <td colspan="9">종단간(End-to-End) ASR 확장 실험 트랙 — Track A (초경량 Conformer + 공간 전이) vs Track B (<code>Qwen3-ASR</code> 고성능 결합)</td>
+                    <td colspan="9">종단간(End-to-End) ASR 확장 실험 트랙 — Track A (초경량 Conformer + 공간 전이) · Track B (<code>VibeVoice-ASR</code> 화자 구분 참고 행, 비인과)</td>
                   </tr>
                   <tr id="row-track-a-conformer">
                     <th scope="row">
@@ -2508,10 +2508,10 @@ tr.group-row td {
                     <td class="pending" aria-label="Colab 측정 대기">측정 대기</td>
                     <td class="pending" aria-label="Colab 측정 대기">측정 대기</td>
                   </tr>
-                  <tr id="row-track-b-qwen3">
+                  <tr id="row-track-b-vibevoice">
                     <th scope="row">
-                      Track B · <code>Qwen3-ASR</code> + 공간·음색 결합
-                      <span class="sys-sub"><code>Qwen3-ASR-0.6B/1.7B</code> + 가변 채널 TAC·ECAPA 결합</span>
+                      Track B · <code>VibeVoice-ASR</code> 화자 구분 (참고)
+                      <span class="sys-sub">마이크 1개 · 20초 전체 관찰(<code>full_audio</code>) · 공간 미사용</span>
                     </th>
                     <td class="pending" aria-label="Colab 측정 대기">측정 대기</td>
                     <td class="pending" aria-label="Colab 측정 대기">측정 대기</td>
@@ -2530,7 +2530,7 @@ tr.group-row td {
               <table style="min-inline-size: 46rem;">
                 <caption id="cap-static-eval">
                   표 6.1b · 정적 화자 · 무잡음 조건 대조 실험 — <code>data/eval-t2-static</code> (200세션 실측 <code>Spk Acc ↑</code>)
-                  <span class="cap-sub">화자가 고정된 위치에서 말할 때는 <code>M = 4 → 3 → 2</code> 드롭 시에도 순수 공간 단서(<code>Space-only</code>)가 <strong>96.3% → 95.1% → 93.5%</strong>라는 매우 높은 귀속 정확도를 유지하며 음색 전용(<code>89.3%</code>)을 압도합니다.</span>
+                  <span class="cap-sub">화자가 고정된 위치에서 말할 때는 <code>M = 4 → 3 → 2</code> 드롭 시에도 순수 공간 단서(<code>Space-only</code>)가 <strong>96.3% → 95.0% → 93.5%</strong>의 귀속 정확도를 유지해 음색 전용(<code>89.4%</code>)보다 높습니다. 표의 무학습 값은 임계값을 이 평가셋에서 고른 낙관적 값입니다.</span>
                 </caption>
                 <thead>
                   <tr>
@@ -2545,26 +2545,26 @@ tr.group-row td {
                 <tbody>
                   <tr>
                     <th scope="row">1. Voice-only (음색 전용)</th>
-                    <td class="num">0.893</td>
-                    <td class="num">0.893</td>
-                    <td class="num">0.893</td>
-                    <td class="num best">0.893</td>
-                    <td>마이크 개수와 무관하게 약 89.3% 고정</td>
+                    <td class="num">0.894</td>
+                    <td class="num">0.894</td>
+                    <td class="num">0.894</td>
+                    <td class="num best">0.891</td>
+                    <td>마이크 개수와 무관하게 약 89.4% (<code>M = 1</code>은 마스크 <code>0010</code>이 <code>ch2</code>를 들어 89.1%)</td>
                   </tr>
                   <tr>
                     <th scope="row">2. Space-only (공간 전용)</th>
-                    <td class="num best">0.963</td>
-                    <td class="num">0.951</td>
+                    <td class="num">0.963</td>
+                    <td class="num">0.950</td>
                     <td class="num">0.935</td>
-                    <td class="num floor">0.500</td>
-                    <td><strong>4ch(96.3%) → 2ch(93.5%) 드롭 시 불과 2.8%p만 감소 (H1 실측 입증)</strong></td>
+                    <td class="num floor">0.659</td>
+                    <td><strong>4ch(96.3%) → 2ch(93.5%) 드롭 시 2.8%p 감소</strong> (학습 없는 공간 단서 기준)</td>
                   </tr>
                   <tr>
                     <th scope="row">3. Naive Fusion (단순 결합)</th>
                     <td class="num best">0.964</td>
                     <td class="num best">0.954</td>
                     <td class="num best">0.935</td>
-                    <td class="num best">0.893</td>
+                    <td class="num best">0.891</td>
                     <td>4ch~2ch 공간 우위 유지 + 1ch 드롭 시 음색 기준선으로 안전 폴백 (H4)</td>
                   </tr>
                 </tbody>
@@ -2575,7 +2575,7 @@ tr.group-row td {
           <div class="subtopic-block">
             <h3 id="lb-lit" class="subtopic-h3" data-subtopic="6.2 선행 논문 채널 드롭아웃 벤치마크 대조표"><span class="sub-num">6.2</span>선행 다채널 공간 화자 분리 연구의 채널 드롭아웃 벤치마크 참조표</h3>
             <p>
-              본 과제의 핵심 가설인 <strong>"다채널에서 채널 드롭아웃으로 학습된 단일 모델은 2채널·1채널로 드롭되어도 공간·음향 분리 표현을 유지하며, 심지어 1채널 전용 모델보다도 뛰어나다"</strong>는 현상을 뒷받침하는 선행 연구 실측 리더보드입니다.
+              선행 연구(Horiguchi et al.)에서는 채널 드롭아웃으로 학습한 단일 모델이 2채널·1채널로 줄어도 성능을 상당 부분 유지했고, 1채널에서는 1채널 전용 모델보다도 나았습니다. 아래는 그 실측 리더보드입니다(지표는 DER). 본 과제의 제안 모델은 <code>M = 1</code>에서 구조상 음색 전용과 같으므로, 이 중 2~4채널 구간의 유지율만 대응합니다.
             </p>
             <div tabindex="0" role="region" aria-labelledby="cap-lit-bench" class="table-wrap">
               <table style="min-inline-size: 48rem;">
@@ -2704,7 +2704,7 @@ tr.group-row td {
             <div class="limit-list">
               <div class="limit-item">
                 <h4>1. 2채널(스테레오) 거울상 충돌(Mirror-Image Collision) 한계</h4>
-                <p>4채널에서 학습된 모델이 <code>M = 2</code>(스테레오)로 드롭되어도 대부분의 위치 조합(89~94%)에서는 두 화자의 TDOA가 달라 공간 분리가 작동합니다. 그러나 두 화자가 우연히 두 마이크를 잇는 축에 대해 정확한 거울상 대칭 위치(예: <code>+60°</code>와 <code>−60°</code>)에 서 있으면 두 화자의 2채널 도달 시간차가 완전히 같아져 공간 단서만으로는 구분할 수 없으며, 이때는 음색 단서(<code>Voice</code>)에 의존해야 합니다.</p>
+                <p>4채널에서 학습된 모델이 <code>M = 2</code>(스테레오)로 드롭되면 두 화자의 원거리 TDOA가 1샘플 이상 다른 세션은 평가셋의 78~86%로 줄어듭니다. 그러나 두 화자가 우연히 두 마이크를 잇는 축에 대해 정확한 거울상 대칭 위치(예: <code>+60°</code>와 <code>−60°</code>)에 서 있으면 두 화자의 2채널 도달 시간차가 완전히 같아져 공간 단서만으로는 구분할 수 없으며, 이때는 음색 단서(<code>Voice</code>)에 의존해야 합니다.</p>
               </div>
               <div class="limit-item">
                 <h4>2. 교대 발화(Turn-taking) 중심 설계와 완전 중첩 발화(Overlap)의 제약</h4>
@@ -2712,7 +2712,7 @@ tr.group-row td {
               </div>
               <div class="limit-item">
                 <h4>3. 실내 이미지 소스법(ISM) 시뮬레이션과 실제 하드웨어 간 도메인 격차</h4>
-                <p><code>pyroomacoustics</code> 기반 합성 데이터는 이상적인 점 음원과 무지향성 마이크를 가정하므로, 실제 회의실 테이블에 의한 음파 회절(Diffraction), 화자의 머리 방향에 따른 고주파 방사 특성, 저가 마이크 캡슐 간 위상·감도 오차를 완벽히 재현하지 못합니다. 이를 보완하기 위해 실제 7채널 원형 어레이 녹음인 <code>LibriCSS</code> 서브셋 평가를 병행합니다.</p>
+                <p><code>pyroomacoustics</code> 기반 합성 데이터는 이상적인 점 음원과 무지향성 마이크를 가정하므로, 실제 회의실 테이블에 의한 음파 회절(Diffraction), 화자의 머리 방향에 따른 고주파 방사 특성, 저가 마이크 캡슐 간 위상·감도 오차를 완벽히 재현하지 못합니다. 실측 회의 데이터셋(<code>LibriCSS</code>)은 세션 구조와 배열 기하가 채점 계약과 맞지 않아 이번 평가에서 다루지 못했으므로, 이 격차는 검증되지 않은 한계로 남습니다.</p>
               </div>
               <div class="limit-item">
                 <h4>4. 인과적 상태 유지(<code>Carry-Over</code>)의 전환 지연(Inertia) 트레이드오프</h4>
@@ -2740,9 +2740,9 @@ tr.group-row td {
                 </thead>
                 <tbody>
                   <tr>
-                    <th scope="row"><code>LibriSpeech</code> / <code>LibriCSS</code></th>
+                    <th scope="row"><code>LibriSpeech</code></th>
                     <td><code>CC BY 4.0</code></td>
-                    <td>다화자 시뮬레이션(<code>data/eval-t2</code>) 원천 음성 및 실제 회의실 7채널 원형 어레이 실측 검증 코퍼스 (16,000 Hz)</td>
+                    <td>다화자 시뮬레이션(<code>data/eval-t2</code>)과 학습·검증 세션의 원천 음성 (16,000 Hz)</td>
                   </tr>
                   <tr>
                     <th scope="row"><code>pyroomacoustics</code> (v0.8.5)</th>
@@ -2755,9 +2755,9 @@ tr.group-row td {
                     <td>초경량 공간 전용 다화자 귀속·전사 파이프라인 (<code>models/space_only.py</code>, <code>models/tac.py</code>, <code>notebooks/track_a_conformer.ipynb</code>)</td>
                   </tr>
                   <tr>
-                    <th scope="row">Track B · <code>Qwen/Qwen3-ASR-0.6B · 1.7B</code></th>
+                    <th scope="row">Track B · <code>microsoft/VibeVoice-ASR</code></th>
                     <td><code>Apache-2.0</code></td>
-                    <td>고성능 음성 파운데이션 ASR 백엔드 및 공간·음색 결합 추론 (<code>notebooks/track_b_qwen3_asr.ipynb</code>)</td>
+                    <td>화자 구분 파운데이션 ASR 참고 행 추론과 채점 (<code>notebooks/track_b_vibevoice.ipynb</code>, <code>track_b.py</code>)</td>
                   </tr>
                   <tr>
                     <th scope="row"><code>speechbrain/spkrec-ecapa-voxceleb</code></th>
@@ -2772,7 +2772,7 @@ tr.group-row td {
           <div class="subtopic-block">
             <h3 id="res-refs" class="subtopic-h3" data-subtopic="8.2 참고문헌 (References)"><span class="sub-num">8.2</span>참고문헌 (References)</h3>
             <p>
-              가변 채널 불변 신경망(<code>TAC</code>, <code>Channel Dropout</code>), 다채널 공간 특징과 화자 분리 결합(<code>SA-S2SND</code>, <code>HSCMA 2026</code>), 그리고 최신 음성 파운데이션 아키텍처(<code>Conformer</code>, <code>Qwen3-ASR</code>)에 관한 핵심 참고문헌입니다.
+              가변 채널 불변 신경망(<code>TAC</code>, <code>Channel Dropout</code>), 다채널 공간 특징과 화자 분리 결합(<code>SA-S2SND</code>, <code>HSCMA 2026</code>), 그리고 최신 음성 파운데이션 아키텍처(<code>Conformer</code>, <code>VibeVoice-ASR</code>)에 관한 핵심 참고문헌입니다.
             </p>
             <ol class="ref-list" lang="en">
               <li>Y. Luo, Z. Chen, N. Mesgarani, and T. Yoshioka, “End-to-end Microphone Permutation and Number Invariant Multi-channel Speech Separation (TAC),” in <em>Proc. IEEE ICASSP</em>, 2020, pp. 6394–6398.</li>
@@ -2781,7 +2781,7 @@ tr.group-row td {
               <li>L. Li, M. Cheng, J. Liu, and M. Li, “Spatially-Augmented Sequence-to-Sequence Neural Diarization for Meetings (SA-S2SND),” <em>arXiv preprint</em> arXiv:2510.09505, 2025.</li>
               <li>R. Wang, S. Niu, G. Yang, J. Du, S. Qian, T. Gao, and J. Pan, “Incorporating Spatial Cues in Modular Speaker Diarization for Multi-channel Multi-party Meetings,” <em>arXiv preprint</em> arXiv:2409.16803, 2024.</li>
               <li>A. Gulati et al., “Conformer: Convolution-augmented Transformer for Speech Recognition,” in <em>Proc. Interspeech</em>, 2020, pp. 5036–5040.</li>
-              <li>Qwen Team, “Qwen2.5-Omni &amp; Qwen3-ASR Technical Report,” Alibaba Group, 2025–2026.</li>
+              <li>Z. Peng, J. Yu, Y. Chang et al., “VibeVoice-ASR Technical Report,” <em>arXiv preprint</em> arXiv:2601.18184, 2026.</li>
               <li>Z. Chen, T. Yoshioka, L. Lu, T. Zhou, Z. Meng, Y. Luo, J. Wu, X. Xiao, and J. Li, “Continuous Speech Separation: Dataset and Analysis (LibriCSS),” in <em>Proc. IEEE ICASSP</em>, 2020, pp. 7284–7288.</li>
               <li>T. Yoshioka et al., “VarArray: Array-Geometry-Agnostic Continuous Speech Separation,” in <em>Proc. IEEE ICASSP</em>, 2022, pp. 6027–6031.</li>
               <li>V. Panayotov, G. Chen, D. Povey, and S. Khudanpur, “LibriSpeech: An ASR Corpus Based on Public Domain Audio Books,” in <em>Proc. IEEE ICASSP</em>, 2015, pp. 5206–5210.</li>
@@ -3226,13 +3226,13 @@ tr.group-row td {
     function updateStatusText() {
       if (!statusReadout) return;
       if (state.M === 4) {
-        statusReadout.textContent = 'M = 4 활성 (1111 · 6쌍 위상 결합) · 360° 단일 빔 수렴 · Spk Acc 96.3% (정적) / 87.8% (이동)';
+        statusReadout.textContent = 'M = 4 활성 (1111 · 6쌍 위상 결합) · 360° 단일 빔 수렴 · 공간 전용 Spk Acc 96.3% (정지) / 87.8% (이동·잡음)';
       } else if (state.M === 3) {
-        statusReadout.textContent = 'M = 3 드롭 (1110 · 3쌍 비공선 삼각) · 전후 대칭 해소 유지 · Spk Acc 95.1% (정적) / 85.3% (이동)';
+        statusReadout.textContent = 'M = 3 드롭 (1110 · 3쌍 비공선 삼각) · 전후 대칭 해소 유지 · 공간 전용 Spk Acc 95.0% (정지) / 85.3% (이동·잡음)';
       } else if (state.M === 2) {
-        statusReadout.textContent = 'M = 2 스테레오 드롭 (1010 · 1쌍) · 거울상 부엽이 생기나 화자 A·B의 Δτ 피크는 완벽 분리 (Spk Acc 93.5% 방어)';
+        statusReadout.textContent = 'M = 2 스테레오 드롭 (1010/1100 · 1쌍) · 거울상 부엽 발생 · 두 화자의 Δτ가 1샘플 이상 다른 세션 78~86% · 공간 전용 Spk Acc 93.5% (정지) / 80.3% (이동·잡음)';
       } else {
-        statusReadout.textContent = 'M = 1 모노 드롭 (1000 · 위상차 소멸) · 채널 드롭아웃으로 공유 학습된 TAC+음색 표현으로 폴백 방어';
+        statusReadout.textContent = 'M = 1 모노 드롭 (1000 · 위상차 소멸) · 공간 단서 없음 · 제안 모델은 음색 전용으로 동작 (공간 전용 Spk Acc 65.9%)';
       }
     }
 
@@ -3621,8 +3621,8 @@ tr.group-row td {
       ctx.fillText('③ 채널 드롭(4→2→1ch) 화자 귀속 유지율 비교 (정적 조건 기준 예시)', rx + 12, py3 + 24);
 
       // Compare 1) Proposed Channel-Dropout TAC Model vs 2) Space-Only without Dropout
-      var tacScore = state.M === 4 ? 0.96 : (state.M === 3 ? 0.95 : (state.M === 2 ? 0.935 : 0.893));
-      var spaceOnlyScore = state.M === 4 ? 0.963 : (state.M === 3 ? 0.951 : (state.M === 2 ? 0.935 : 0.50));
+      var tacScore = state.M === 4 ? 0.96 : (state.M === 3 ? 0.95 : (state.M === 2 ? 0.935 : 0.891));
+      var spaceOnlyScore = state.M === 4 ? 0.963 : (state.M === 3 ? 0.950 : (state.M === 2 ? 0.935 : 0.659));
 
       var barsData = [
         { label: '공간+음색 결합 및 채널 드롭 전이 (4ch→' + state.M + 'ch)', val: tacScore, col: '#83c167' },
