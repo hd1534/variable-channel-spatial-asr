@@ -1560,6 +1560,35 @@ class TestLiftedConventions(EvaluatorTestCase):
             )
             self.assertEqual(report["scopes"]["windowed"]["n_cases"], 1)
 
+    def test_timepoint_only_observation_mode_and_conflict_rejection(self) -> None:
+        """A timepoint-only submission declaring full_audio must not land in the official causal table."""
+        report = self.score(
+            [gt_transcripts(), gt_timepoint()],
+            [point_prediction(observation_mode="full_audio")],
+        )
+        self.assertEqual(report["official"]["n_cases"], 0)
+        self.assertEqual(report["scopes"]["full_audio"]["n_cases"], 1)
+
+        with self.assertRaises(evaluate.SubmissionError) as caught:
+            self.score(
+                [gt_transcripts(), gt_timepoint(0.0), gt_timepoint(0.25)],
+                [
+                    point_prediction(0.0, observation_mode="causal"),
+                    point_prediction(0.25, observation_mode="full_audio"),
+                ],
+            )
+        self.assertTrue(str(caught.exception).startswith(evaluate.RULE_PARSE))
+
+        with self.assertRaises(evaluate.SubmissionError) as caught:
+            self.score(
+                [gt_transcripts(), gt_timepoint()],
+                [
+                    point_prediction(0.0, observation_mode="full_audio"),
+                    pred_transcripts(observation_mode="causal"),
+                ],
+            )
+        self.assertTrue(str(caught.exception).startswith(evaluate.RULE_PARSE))
+
     def test_a_split_cartesian_pair_is_rejected(self) -> None:
         record = {
             spec.F_RECORD_TYPE: spec.RECORD_TYPE_TIMEPOINT,

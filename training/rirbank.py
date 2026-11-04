@@ -305,16 +305,27 @@ def build_bank(bank: BankSpec, root: str | Path, workers: int = 0, log=print, mi
     far = Path(mirror) / bank.dirname if mirror else None
     n_shards = -(-bank.n_rooms // SHARD_ROOMS)
     todo = []
+    reused_sources = set()
     for shard in range(n_shards):
         if _shard_ok(out, bank, shard):
+            reused_sources.add(out)
             continue
         if far is not None and _shard_ok(far, bank, shard):
             _copy_shard(far, out, shard)
             if _shard_ok(out, bank, shard):
+                reused_sources.add(far)
                 continue
         todo.append(shard)
     if todo:
         version = _engine_version(bank.engine)
+        for src_dir in (out, far):
+            if src_dir is not None and (src_dir / "bank.json").is_file() and reused_sources:
+                old_ver = json.loads((src_dir / "bank.json").read_text(encoding="utf-8")).get("engine_version")
+                if old_ver is not None and version is not None and old_ver != version:
+                    raise ValueError(
+                        f"cannot mix RIR shards built with {bank.engine} {old_ver!r} ({src_dir}) "
+                        f"and current {version!r}; use the matching version or rebuild in a clean directory"
+                    )
         workers = workers or max(1, os.cpu_count() or 1)  # the parent only waits on the pool
         log(f"[rirbank] building {len(todo)}/{n_shards} shards of {SHARD_ROOMS} rooms with {workers} worker(s) "
             f"({bank.engine} {version or ''}) -> {out}")

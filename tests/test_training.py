@@ -326,6 +326,131 @@ class TestRobustness(unittest.TestCase):
         loss, _ = SessionCentroidLoss()(z, torch.tensor([[-1, 0, 0, 1, 1, 0]]))
         self.assertTrue(bool(torch.isfinite(loss)))
 
+    def test_mixed_engine_versions_are_refused_when_completing_a_bank(self) -> None:
+        import json
+        import tempfile
+        import unittest.mock
+
+        from training.rirbank import BankSpec, build_bank
+
+        bank = BankSpec(13, 60, 0.1, (0.15, 0.2), "fallback_ism")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with unittest.mock.patch("training.rirbank._engine_version", return_value="0.8.5"):
+                build_bank(bank, root, workers=1, log=lambda *_: None)
+            self.assertEqual(json.loads((root / bank.dirname / "bank.json").read_text())["engine_version"], "0.8.5")
+            (root / bank.dirname / "rirs_0001.npy").unlink()
+            with unittest.mock.patch("training.rirbank._engine_version", return_value="0.10.1"):
+                with self.assertRaises(ValueError):
+                    build_bank(bank, root, workers=1, log=lambda *_: None)
+
+    def test_best_checkpoint_selection_uses_official_two_slot_cap(self) -> None:
+        """Selection score must follow the official 2-talker 2-slot cap (M>=2), not the 4-slot diagnostic."""
+        import tempfile
+        import unittest.mock
+
+        from training.engine import Run
+
+        cfg = load_config_dict({"name": "s", "data": {"synthetic": True, "n_rooms_train": 2, "n_rooms_val": 2,
+                                                      "n_val_sessions": 2, "num_workers": 0},
+                                "model": {"name": "proposed", "voice_encoder": "stub", "d_model": 16,
+                                          "n_tac_blocks": 1, "d_spatial": 8},
+                                "train": {"max_steps": 1}})
+        with tempfile.TemporaryDirectory() as tmp:
+            run = Run(cfg, Path(tmp) / "run", Path(tmp) / "data", device="cpu", log=lambda *_: None)
+            fake_val = {
+                "spk_acc": 0.90,
+                "spk_acc_by_M": {"1": 0.5, "2": 0.95, "3": 0.95, "4": 0.95},
+                "spk_acc_n2_cap2": 0.70,
+                "spk_acc_n2_cap2_by_M": {"1": 0.5, "2": 0.70, "3": 0.72, "4": 0.74},
+                "theta_by_M": {"1": 0.5, "2": 0.5, "3": 0.5, "4": 0.5},
+                "theta_official_by_M": {"1": 0.5, "2": 0.5, "3": 0.5, "4": 0.5},
+            }
+            with unittest.mock.patch.object(run, "validate", return_value=dict(fake_val)):
+                run._validate_and_keep_best()
+            self.assertAlmostEqual(run.best, 0.72, places=4)
+
+    def test_consecutive_non_finite_batches_abort_training(self) -> None:
+        import tempfile
+        import unittest.mock
+
+        from training.engine import Run
+
+        cfg = load_config_dict({"name": "s", "data": {"synthetic": True, "n_rooms_train": 2, "n_rooms_val": 2,
+                                                      "n_val_sessions": 2, "num_workers": 0},
+                                "model": {"name": "proposed", "voice_encoder": "stub", "d_model": 16,
+                                          "n_tac_blocks": 1, "d_spatial": 8},
+                                "train": {"max_steps": 10, "batch_size": 2, "max_consecutive_skips": 3}})
+        with tempfile.TemporaryDirectory() as tmp:
+            run = Run(cfg, Path(tmp) / "run", Path(tmp) / "data", device="cpu", log=lambda *_: None)
+            bad = (torch.tensor(float("nan")), {"acc": 0.0})
+            with unittest.mock.patch.object(run, "loss_fn", return_value=bad):
+                with self.assertRaises(RuntimeError):
+                    run.fit()
+            self.assertEqual(run.step, 0)
+
+    def test_eval_t2_guards_config_fingerprint_and_component_cache(self) -> None:
+        import argparse
+        import json
+        import tempfile
+
+        import eval_t2
+        from training.config import config_fingerprint
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg_v = load_config_dict({"name": "v", "model": {"name": "voice_only"}})
+            cfg_s1 = load_config_dict({"name": "s1", "model": {"name": "space_only", "srp_temperature": 1.0}})
+            cfg_s10 = load_config_dict({"name": "s10", "model": {"name": "space_only", "srp_temperature": 10.0}})
+            cfg_nf = load_config_dict({"name": "nf", "model": {"name": "naive_fusion", "srp_temperature": 1.0}})
+
+            # (1) --config + --summary rejects a summary from a different config fingerprint
+            cfg_s10_path = root / "s10.json"
+            cfg_s10_path.write_text(json.dumps({"name": "s10", "model": {"name": "space_only", "srp_temperature": 10.0}}))
+            sum_s1_path = root / "summary_s1.json"
+            sum_s1_path.write_text(json.dumps({"system": "space_only", "fingerprint": config_fingerprint(cfg_s1),
+                                               "theta_official_by_M": {"1": 0.5, "2": 0.5, "3": 0.5, "4": 0.5}}))
+            ns = argparse.Namespace(run_dir=None, config=str(cfg_s10_path), summary=str(sum_s1_path), tune_on_eval=False)
+            with self.assertRaises(SystemExit):
+                eval_t2.load_system_inputs(ns)
+
+            # (2) --components-from invalidates cache when an upstream component changes
+            set_dir = root / "eval-t2"
+            set_dir.mkdir()
+            (set_dir / "manifest.json").write_text('{"official": false}')
+            v_dir, s_dir, nf_dir = root / "out_v", root / "out_s", root / "out_nf"
+            for d in (v_dir, s_dir, nf_dir):
+                (d / "eval-t2").mkdir(parents=True)
+
+            base_fields = {
+                "case_id": np.array(["c0"]), "session_id": np.array(["s0"]),
+                "mask": np.array(["1111"]), "ref": np.array([0]),
+                "speech": np.ones((1, 80), dtype=bool), "labels": np.zeros((1, 80), dtype=np.int64),
+            }
+            v1 = np.ones((1, 80, 4), dtype=np.float32)
+            v2 = np.full((1, 80, 4), 2.0, dtype=np.float32)
+            sp = np.ones((1, 80, 36), dtype=np.float32)
+            fp_v = eval_t2.inputs_fingerprint(cfg_v, set_dir, None, 0)
+            fp_s = eval_t2.inputs_fingerprint(cfg_s1, set_dir, None, 0)
+
+            np.savez_compressed(v_dir / "eval-t2" / "embeddings.npz", fingerprint=np.asarray(fp_v), voice=v1, **base_fields)
+            np.savez_compressed(s_dir / "eval-t2" / "embeddings.npz", fingerprint=np.asarray(fp_s), space=sp, **base_fields)
+
+            args = argparse.Namespace(limit=0, components_from=[str(v_dir), str(s_dir)], device="cpu", model_cache=None)
+            emb1 = eval_t2.load_or_embed(cfg_nf, set_dir, nf_dir / "eval-t2", args, None, [], {})
+            np.testing.assert_array_equal(emb1["voice"], v1)
+
+            # Replace voice component with new values and re-run: must not return stale v1
+            np.savez_compressed(v_dir / "eval-t2" / "embeddings.npz", fingerprint=np.asarray(fp_v), voice=v2, **base_fields)
+            emb2 = eval_t2.load_or_embed(cfg_nf, set_dir, nf_dir / "eval-t2", args, None, [], {})
+            np.testing.assert_array_equal(emb2["voice"], v2)
+
+            # Component with incompatible settings (e.g. srp_temperature=10 vs naive_fusion's 1) is rejected
+            fp_s10 = eval_t2.inputs_fingerprint(cfg_s10, set_dir, None, 0)
+            np.savez_compressed(s_dir / "eval-t2" / "embeddings.npz", fingerprint=np.asarray(fp_s10), space=sp, **base_fields)
+            with self.assertRaises(SystemExit):
+                eval_t2.load_or_embed(cfg_nf, set_dir, nf_dir / "eval-t2", args, None, [], {})
+
 
 class TestOfficialPath(unittest.TestCase):
     def test_internal_spk_acc_matches_evaluate_py(self) -> None:

@@ -49,7 +49,7 @@ import evaluate  # noqa: E402
 import spec  # noqa: E402
 import transcripts as tr  # noqa: E402
 from models.slots import best_assignment_accuracy, online_slots, theta_grid, tune_theta  # noqa: E402
-from training.config import load_config, load_config_dict  # noqa: E402
+from training.config import config_fingerprint, load_config, load_config_dict  # noqa: E402
 from training.official import timepoint_records, track_for  # noqa: E402
 
 REPO = Path(__file__).resolve().parent
@@ -96,6 +96,10 @@ def load_system_inputs(args: argparse.Namespace) -> tuple[Any, dict[str, Any] | 
         if changed:
             raise SystemExit(f"that validation run overrode {changed}; pass its run directory as --run-dir "
                              "so the same settings are used here")
+        if summary.get("fingerprint") is not None and summary.get("fingerprint") != config_fingerprint(cfg):
+            raise SystemExit(f"{args.summary} was computed under config fingerprint {summary.get('fingerprint')!r}, "
+                             f"but {args.config} has {config_fingerprint(cfg)!r}; pass its run directory as --run-dir "
+                             "or use the matching config")
     return cfg, summary, None
 
 
@@ -201,27 +205,34 @@ def embed_set(cfg: Any, set_dir: Path, gt: list[dict[str, Any]], meta: dict[str,
     return {k: np.asarray(v) for k, v in out.items() if len(v)}
 
 
-def inputs_fingerprint(cfg: Any, set_dir: Path, best: Path | None, limit: int) -> str:
+def inputs_fingerprint(cfg: Any, set_dir: Path, best: Path | None, limit: int,
+                       components_from: list[str] | None = None) -> str:
     h = hashlib.sha256()
     h.update(json.dumps({"model": cfg.model.__dict__, "slots": cfg.slots.__dict__, "limit": limit}, sort_keys=True,
                         default=str).encode())
     h.update((set_dir / "manifest.json").read_bytes())
     if best is not None:
         h.update(hashlib.sha256(best.read_bytes()).digest())
+    if components_from:
+        for d in components_from:
+            comp_path = Path(d) / set_dir.name / "embeddings.npz"
+            if not comp_path.is_file():
+                raise SystemExit(f"--components-from missing {comp_path}")
+            h.update(hashlib.sha256(comp_path.read_bytes()).digest())
     return h.hexdigest()[:16]
 
 
 def load_or_embed(cfg: Any, set_dir: Path, out_dir: Path, args: argparse.Namespace, best: Path | None,
                   gt: list[dict[str, Any]], meta: dict[str, dict[str, Any]]) -> dict[str, np.ndarray]:
     path = out_dir / "embeddings.npz"
-    fp = inputs_fingerprint(cfg, set_dir, best, args.limit)
+    fp = inputs_fingerprint(cfg, set_dir, best, args.limit, args.components_from)
     if path.is_file():
         data = dict(np.load(path, allow_pickle=False))
         if str(data.pop("fingerprint")) == fp:
             print(f"  embeddings reused: {path}")
             return data
     if args.components_from:
-        data = assemble_components(args.components_from, set_dir.name, cfg)
+        data = assemble_components(args.components_from, set_dir, cfg, args.limit)
     else:
         data = embed_set(cfg, set_dir, gt, meta, args.device, args.model_cache, best, args.limit)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -229,16 +240,29 @@ def load_or_embed(cfg: Any, set_dir: Path, out_dir: Path, args: argparse.Namespa
     return data
 
 
-def assemble_components(dirs: list[str], set_name: str, cfg: Any) -> dict[str, np.ndarray]:
+def assemble_components(dirs: list[str], set_dir: Path, cfg: Any, limit: int = 0) -> dict[str, np.ndarray]:
     """Naive fusion from the voice-only and space-only runs' embeddings: the same
     frozen ECAPA and SRP-PHAT outputs, so nothing is recomputed.  The runs must
-    cover the same cases with the same speech flags."""
+    cover the same cases with the same speech flags and compatible settings."""
+    from dataclasses import replace
+
     if cfg.model.name != "naive_fusion":
         raise SystemExit("--components-from only assembles naive fusion")
+    expected_fps = {
+        "voice": inputs_fingerprint(replace(cfg, model=replace(cfg.model, name="voice_only", fusion_weight=None)),
+                                    set_dir, None, limit),
+        "space": inputs_fingerprint(replace(cfg, model=replace(cfg.model, name="space_only", fusion_weight=None)),
+                                    set_dir, None, limit),
+    }
     out: dict[str, np.ndarray] = {}
     for d in dirs:
-        data = dict(np.load(Path(d) / set_name / "embeddings.npz", allow_pickle=False))
-        data.pop("fingerprint")
+        comp_path = Path(d) / set_dir.name / "embeddings.npz"
+        data = dict(np.load(comp_path, allow_pickle=False))
+        comp_fp = str(data.pop("fingerprint", ""))
+        for part in ("voice", "space"):
+            if part in data and comp_fp != expected_fps[part]:
+                raise SystemExit(f"{comp_path}: {part} embeddings fingerprint {comp_fp!r} does not match "
+                                 f"current {part}_only settings ({expected_fps[part]!r})")
         for key, value in data.items():
             if key in out and key in ("case_id", "speech", "labels", "ref", "mask", "session_id"):
                 if not np.array_equal(out[key], value):

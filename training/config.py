@@ -185,6 +185,9 @@ class TrainConfig:
     a slow runtime never loses more than about ten minutes."""
     ckpt_keep: int = 3
     log_every: int = 50
+    max_consecutive_skips: int = 20
+    """Abort if this many consecutive batches have non-finite loss or gradients,
+    instead of spinning forever on an infinite stream."""
     seed: int = 20261030
 
 
@@ -300,7 +303,7 @@ def config_fingerprint(cfg: RunConfig) -> str:
     """
     d = config_to_dict(cfg)
     d["data"].pop("num_workers", None)
-    for k in ("max_steps", "val_every", "ckpt_every", "ckpt_every_sec", "ckpt_keep", "log_every"):
+    for k in ("max_steps", "val_every", "ckpt_every", "ckpt_every_sec", "ckpt_keep", "log_every", "max_consecutive_skips"):
         d["train"].pop(k, None)
     blob = json.dumps(d, sort_keys=True).encode("utf-8")
     return hashlib.sha256(blob).hexdigest()[:16]

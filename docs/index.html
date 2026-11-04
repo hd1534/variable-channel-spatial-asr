@@ -2048,17 +2048,15 @@ tr.group-row td {
                 <div>
                   <div class="colab-card-head">
                     <h4>3. Track A · 초경량 Conformer + 공간 전이</h4>
-                    <a class="colab-badge-link" href="https://colab.research.google.com/github/hd1534/variable-channel-spatial-asr/blob/main/notebooks/track_a_conformer.ipynb" target="_blank" rel="noopener" aria-label="track_a_conformer.ipynb Open in Colab">
-                      <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab">
-                    </a>
+                    <span class="badge">준비 중</span>
                   </div>
                   <p style="margin-block-start: 0.45rem;">
-                    화자 음색 인코더 없이 <code>16 kHz</code> Log-Mel과 다채널 <code>GCC-PHAT</code> 위상차만으로 경량 <code>Conformer</code>를 학습한 뒤, 마이크 드롭 시 공간 표현이 유지되는지 검증합니다.
+                    화자 음색 인코더 없이 <code>16 kHz</code> Log-Mel과 다채널 <code>GCC-PHAT</code> 위상차만으로 경량 <code>Conformer</code>를 학습한 뒤, 마이크 드롭 시 공간 표현이 유지되는지 검증합니다 (후속 구현 예정).
                   </p>
                 </div>
                 <div class="colab-card-foot">
-                  <span class="mono">notebooks/track_a_conformer.ipynb</span>
-                  <span class="badge">Track A 벤치마크 노트북</span>
+                  <span class="mono">Track A · 후속 실험</span>
+                  <span class="badge">구현 예정</span>
                 </div>
               </div>
 
@@ -2752,7 +2750,7 @@ tr.group-row td {
                   <tr>
                     <th scope="row">Track A · <code>Conformer</code> + <code>TAC</code></th>
                     <td><code>Apache-2.0</code></td>
-                    <td>초경량 공간 전용 다화자 귀속·전사 파이프라인 (<code>models/space_only.py</code>, <code>models/tac.py</code>, <code>notebooks/track_a_conformer.ipynb</code>)</td>
+                    <td>초경량 공간 전용 다화자 귀속·전사 파이프라인 (<code>models/space_only.py</code>, <code>models/tac.py</code> · 종단간 전사 노트북 구현 예정)</td>
                   </tr>
                   <tr>
                     <th scope="row">Track B · <code>microsoft/VibeVoice-ASR</code></th>

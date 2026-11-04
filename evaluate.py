@@ -1139,6 +1139,42 @@ def _pred_speaker(obj: Mapping[str, Any], where: str) -> str | None:
     return None
 
 
+def _record_observation_mode(
+    preds: Predictions, case_id: str, obj: Mapping[str, Any], where: str, default: str | None = None
+) -> None:
+    """Validate and record ``observation_mode`` from a submission record."""
+    mode = obj.get("observation_mode", default)
+    if mode is None:
+        return
+    if mode not in spec.OBSERVATION_MODES:
+        _reject(
+            RULE_PARSE,
+            f"{where}: observation_mode {mode!r} not in {spec.OBSERVATION_MODES}",
+        )
+    if mode == "windowed" and spec.WINDOWED_REQUIRES_LOOKAHEAD:
+        # W 를 모르면 windowed 제출끼리도 순위를 매길 수 없다.
+        # meta 안에 적는 베이스라인도 있으므로 양쪽을 본다.
+        meta = obj.get("meta")
+        look = _optional_float(obj, spec.F_LOOKAHEAD_SEC, where)
+        if look is None and isinstance(meta, Mapping):
+            look = _optional_float(meta, spec.F_LOOKAHEAD_SEC, where)
+        if look is None:
+            _reject(
+                RULE_PARSE,
+                f"{where}: observation_mode 'windowed' needs "
+                f"{spec.F_LOOKAHEAD_SEC!r} (spec.WINDOWED_REQUIRES_LOOKAHEAD)",
+            )
+    mode_str = str(mode)
+    prev = preds.observation_modes.get(case_id)
+    if prev is not None and prev != mode_str:
+        _reject(
+            RULE_PARSE,
+            f"{where}: case {case_id!r} declares conflicting observation_mode "
+            f"{mode_str!r} vs {prev!r}",
+        )
+    preds.observation_modes[case_id] = mode_str
+
+
 def load_predictions(path: Path, track: int) -> Predictions:
     """Parse and validate a submission JSONL file.
 
@@ -1156,26 +1192,13 @@ def load_predictions(path: Path, track: int) -> Predictions:
             if case_id in preds.transcripts:
                 _reject(RULE_DUPLICATE_CASE, f"duplicate case_id {case_id!r}")
             preds.transcripts[case_id] = _parse_transcripts(obj, where, track)
-            mode = obj.get("observation_mode", spec.OFFICIAL_SCOPES[0])
-            if mode not in spec.OBSERVATION_MODES:
-                _reject(
-                    RULE_PARSE,
-                    f"{where}: observation_mode {mode!r} not in {spec.OBSERVATION_MODES}",
-                )
-            if mode == "windowed" and spec.WINDOWED_REQUIRES_LOOKAHEAD:
-                # W 를 모르면 windowed 제출끼리도 순위를 매길 수 없다.
-                # meta 안에 적는 베이스라인도 있으므로 양쪽을 본다.
-                meta = obj.get("meta")
-                look = _optional_float(obj, spec.F_LOOKAHEAD_SEC, where)
-                if look is None and isinstance(meta, Mapping):
-                    look = _optional_float(meta, spec.F_LOOKAHEAD_SEC, where)
-                if look is None:
-                    _reject(
-                        RULE_PARSE,
-                        f"{where}: observation_mode 'windowed' needs "
-                        f"{spec.F_LOOKAHEAD_SEC!r} (spec.WINDOWED_REQUIRES_LOOKAHEAD)",
-                    )
-            preds.observation_modes[case_id] = str(mode)
+            _record_observation_mode(
+                preds,
+                case_id,
+                obj,
+                where,
+                default=None if case_id in preds.observation_modes else spec.OFFICIAL_SCOPES[0],
+            )
             rtf = _optional_float(obj, METRIC_RTF, where)
             if rtf is None:
                 rtf = _optional_float(obj, RTF_ALIAS_KEY, where)
@@ -1190,6 +1213,7 @@ def load_predictions(path: Path, track: int) -> Predictions:
                 f"{where}: a submission must list one record per timepoint, "
                 f"not a nested {FRAMES_KEY!r} list",
             )
+        _record_observation_mode(preds, case_id, obj, where)
         eval_time = _require_eval_time(obj, where)
         key = time_key(eval_time)
         bucket = preds.points.setdefault(case_id, {})

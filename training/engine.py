@@ -323,6 +323,7 @@ class Run:
         self.system.train()
         window: dict[str, list[float]] = {}
         skipped = 0
+        consecutive_skips = 0
         last_ckpt = time.time()
         t_data = time.time()
         for batch in loader:
@@ -338,13 +339,27 @@ class Run:
             loss = loss_spk + cfg.train.position_loss_weight * loss_pos
             if not torch.isfinite(loss):
                 skipped += 1
+                consecutive_skips += 1
                 self.log(f"[train] non-finite loss at step {self.step}; batch skipped ({skipped} so far)")
+                if consecutive_skips >= cfg.train.max_consecutive_skips:
+                    raise RuntimeError(f"aborting after {consecutive_skips} consecutive non-finite batches at step {self.step}")
                 t_data = time.time()
                 continue
             self.opt.zero_grad(set_to_none=True)
             self.scaler.scale(loss).backward()
             self.scaler.unscale_(self.opt)
             grad_norm = torch.nn.utils.clip_grad_norm_(self.system.parameters(), cfg.train.grad_clip)
+            if not torch.isfinite(grad_norm):
+                skipped += 1
+                consecutive_skips += 1
+                self.opt.zero_grad(set_to_none=True)
+                self.scaler.update()
+                self.log(f"[train] non-finite grad_norm at step {self.step}; batch skipped ({skipped} so far)")
+                if consecutive_skips >= cfg.train.max_consecutive_skips:
+                    raise RuntimeError(f"aborting after {consecutive_skips} consecutive non-finite batches at step {self.step}")
+                t_data = time.time()
+                continue
+            consecutive_skips = 0
             self.scaler.step(self.opt)
             self.scaler.update()
             self.sched.step()
@@ -394,9 +409,11 @@ class Run:
 
     def _validate_and_keep_best(self) -> None:
         result = self.validate(quick=True)
-        # Chosen on M >= 2 only: at M = 1 the model is voice-only by construction.
-        multi = [v for m, v in result["spk_acc_by_M"].items() if int(m) >= 2]
-        result["select_score"] = round(float(np.mean(multi)), 4) if multi else result["spk_acc"]
+        # Chosen on M >= 2 under the official 2-talker, 2-slot cap (or spk_acc_by_M when no N=2 cases exist):
+        # at M = 1 the model is voice-only by construction.
+        by_m = result.get("spk_acc_n2_cap2_by_M") or result["spk_acc_by_M"]
+        multi = [v for m, v in by_m.items() if int(m) >= 2]
+        result["select_score"] = round(float(np.mean(multi)), 4) if multi else result.get("spk_acc_n2_cap2", result["spk_acc"])
         score = result["select_score"]
         improved = score > self.best
         if improved:
@@ -405,8 +422,9 @@ class Run:
                          "loss": self.loss_fn.state_dict(), "val": result}, self.run_dir / "best.pt")
         self._event(kind="val", improved=improved, **{k: v for k, v in result.items() if k != "cases"})
         extra = f" position_acc={result['position_acc_by_M']}" if "position_acc_by_M" in result else ""
-        self.log(f"[val] step {self.step} select(M>=2)={score:.4f} spk_acc={result['spk_acc']:.4f} by_M={result['spk_acc_by_M']} "
-                 f"theta_by_M={result['theta_by_M']}{extra}" + ("  *best*" if improved else ""))
+        self.log(f"[val] step {self.step} select(M>=2,cap2)={score:.4f} spk_acc_n2_cap2={result.get('spk_acc_n2_cap2', result['spk_acc']):.4f} "
+                 f"by_M(cap2)={by_m} theta_official_by_M={result.get('theta_official_by_M', result['theta_by_M'])}{extra}"
+                 + ("  *best*" if improved else ""))
 
     # -- validation --------------------------------------------------------------
     def _cached(self, kind: str, batch: dict[str, Any], key_extra: Any, compute: Callable[[], torch.Tensor]) -> torch.Tensor:
@@ -571,6 +589,7 @@ class Run:
             result["position_acc_by_M"] = mean_of("position_acc", lambda c: c["M"])
         if two:
             result["theta_official_by_M"] = {str(m): t["theta"] for m, t in theta_official.items()}
+            result["spk_acc_n2_cap2_by_M"] = self._accuracy_by_M(two, theta_official, cap2)
             per_case = [best_assignment_accuracy(c["labels_eval"],
                                                  online_slots(c["emb"], c["speech"], [theta_official[c["M"]]["theta"]], cap2)[0])
                         for c in two]
