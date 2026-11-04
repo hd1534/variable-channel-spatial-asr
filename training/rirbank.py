@@ -292,6 +292,28 @@ def _engine_version(engine: str) -> str | None:
     return pyroomacoustics.__version__
 
 
+def _check_bank_version(src_dir: Path, bank: BankSpec, version: str | None) -> None:
+    meta_path = src_dir / "bank.json"
+    if not meta_path.is_file():
+        if version is not None:
+            raise ValueError(
+                f"cannot mix existing unversioned RIR shards in {src_dir} with {bank.engine} {version!r}; "
+                "rebuild in a clean directory"
+            )
+        return
+    old_ver = json.loads(meta_path.read_text(encoding="utf-8")).get("engine_version")
+    if old_ver is not None and version is not None and old_ver != version:
+        raise ValueError(
+            f"cannot mix RIR shards built with {bank.engine} {old_ver!r} ({src_dir}) "
+            f"and current {version!r}; use the matching version or rebuild in a clean directory"
+        )
+    if old_ver is None and version is not None:
+        raise ValueError(
+            f"cannot mix RIR shards without engine_version in {src_dir} with {bank.engine} {version!r}; "
+            "rebuild in a clean directory"
+        )
+
+
 def build_bank(bank: BankSpec, root: str | Path, workers: int = 0, log=print, mirror: str | Path | None = None) -> Path:
     """Build (or finish building) ``root/<bank.dirname>`` and return its path.
 
@@ -304,28 +326,47 @@ def build_bank(bank: BankSpec, root: str | Path, workers: int = 0, log=print, mi
     out.mkdir(parents=True, exist_ok=True)
     far = Path(mirror) / bank.dirname if mirror else None
     n_shards = -(-bank.n_rooms // SHARD_ROOMS)
-    todo = []
-    reused_sources = set()
-    for shard in range(n_shards):
-        if _shard_ok(out, bank, shard):
-            reused_sources.add(out)
-            continue
-        if far is not None and _shard_ok(far, bank, shard):
-            _copy_shard(far, out, shard)
-            if _shard_ok(out, bank, shard):
-                reused_sources.add(far)
-                continue
-        todo.append(shard)
+    in_out = [s for s in range(n_shards) if _shard_ok(out, bank, s)]
+    in_far = [s for s in range(n_shards) if s not in in_out and far is not None and _shard_ok(far, bank, s)]
+    todo = [s for s in range(n_shards) if s not in in_out and s not in in_far]
+
+    if in_out and in_far and (out / "bank.json").is_file() and far is not None and (far / "bank.json").is_file():
+        ver_out = json.loads((out / "bank.json").read_text(encoding="utf-8")).get("engine_version")
+        ver_far = json.loads((far / "bank.json").read_text(encoding="utf-8")).get("engine_version")
+        if ver_out is not None and ver_far is not None and ver_out != ver_far:
+            raise ValueError(
+                f"cannot mix RIR shards built with {bank.engine} {ver_out!r} ({out}) "
+                f"and {ver_far!r} ({far}); rebuild in a clean directory"
+            )
+
     if todo:
         version = _engine_version(bank.engine)
-        for src_dir in (out, far):
-            if src_dir is not None and (src_dir / "bank.json").is_file() and reused_sources:
-                old_ver = json.loads((src_dir / "bank.json").read_text(encoding="utf-8")).get("engine_version")
-                if old_ver is not None and version is not None and old_ver != version:
-                    raise ValueError(
-                        f"cannot mix RIR shards built with {bank.engine} {old_ver!r} ({src_dir}) "
-                        f"and current {version!r}; use the matching version or rebuild in a clean directory"
-                    )
+        if in_out or (out / "bank.json").is_file():
+            _check_bank_version(out, bank, version)
+        if far is not None and (in_far or (far / "bank.json").is_file()):
+            _check_bank_version(far, bank, version)
+
+    for shard in in_far:
+        _copy_shard(far, out, shard)
+        if not _shard_ok(out, bank, shard):
+            todo.append(shard)
+
+    info = {"version": BANK_VERSION, "seed": bank.seed, "n_rooms": bank.n_rooms, "rir_sec": bank.rir_sec,
+            "rt60_range_sec": list(bank.rt60_range_sec), "engine": bank.engine, "shard_rooms": SHARD_ROOMS,
+            "variants": bank.variants, "jitter_m": list(bank.jitter_m)}
+    previous = out / "bank.json"
+
+    if todo:
+        version = _engine_version(bank.engine)
+        if in_out or previous.is_file():
+            _check_bank_version(out, bank, version)
+        if far is not None and (in_far or (far / "bank.json").is_file()):
+            _check_bank_version(far, bank, version)
+        info["engine_version"] = version
+        previous.write_text(json.dumps(info), encoding="utf-8")
+        if far is not None:
+            far.mkdir(parents=True, exist_ok=True)
+            (far / "bank.json").write_text(previous.read_text(encoding="utf-8"), encoding="utf-8")
         workers = workers or max(1, os.cpu_count() or 1)  # the parent only waits on the pool
         log(f"[rirbank] building {len(todo)}/{n_shards} shards of {SHARD_ROOMS} rooms with {workers} worker(s) "
             f"({bank.engine} {version or ''}) -> {out}")
@@ -348,15 +389,11 @@ def build_bank(bank: BankSpec, root: str | Path, workers: int = 0, log=print, mi
             with mp.get_context("spawn").Pool(workers, initializer=_single_threaded_worker) as pool:
                 for shard in pool.imap_unordered(_build_shard, jobs):
                     finished(shard)
-    info = {"version": BANK_VERSION, "seed": bank.seed, "n_rooms": bank.n_rooms, "rir_sec": bank.rir_sec,
-            "rt60_range_sec": list(bank.rt60_range_sec), "engine": bank.engine, "shard_rooms": SHARD_ROOMS,
-            "variants": bank.variants, "jitter_m": list(bank.jitter_m)}
-    previous = out / "bank.json"
     if not todo and not previous.is_file() and far is not None and (far / "bank.json").is_file():
         # every shard came from the mirror: so does the record of which simulator made them
         previous.write_text((far / "bank.json").read_text(encoding="utf-8"), encoding="utf-8")
-    if todo or not previous.is_file():
-        info["engine_version"] = _engine_version(bank.engine) if todo else None
+    if not previous.is_file():
+        info["engine_version"] = None
         previous.write_text(json.dumps(info), encoding="utf-8")
     if far is not None and not (far / "bank.json").is_file():
         far.mkdir(parents=True, exist_ok=True)

@@ -1140,10 +1140,10 @@ def _pred_speaker(obj: Mapping[str, Any], where: str) -> str | None:
 
 
 def _record_observation_mode(
-    preds: Predictions, case_id: str, obj: Mapping[str, Any], where: str, default: str | None = None
+    preds: Predictions, case_id: str, obj: Mapping[str, Any], where: str
 ) -> None:
-    """Validate and record ``observation_mode`` from a submission record."""
-    mode = obj.get("observation_mode", default)
+    """Validate and record an explicit ``observation_mode`` from a submission record."""
+    mode = obj.get("observation_mode")
     if mode is None:
         return
     if mode not in spec.OBSERVATION_MODES:
@@ -1192,13 +1192,7 @@ def load_predictions(path: Path, track: int) -> Predictions:
             if case_id in preds.transcripts:
                 _reject(RULE_DUPLICATE_CASE, f"duplicate case_id {case_id!r}")
             preds.transcripts[case_id] = _parse_transcripts(obj, where, track)
-            _record_observation_mode(
-                preds,
-                case_id,
-                obj,
-                where,
-                default=None if case_id in preds.observation_modes else spec.OFFICIAL_SCOPES[0],
-            )
+            _record_observation_mode(preds, case_id, obj, where)
             rtf = _optional_float(obj, METRIC_RTF, where)
             if rtf is None:
                 rtf = _optional_float(obj, RTF_ALIAS_KEY, where)
@@ -1252,6 +1246,7 @@ def load_predictions(path: Path, track: int) -> Predictions:
             speaker=_pred_speaker(obj, where),
         )
     for case_id in preds.case_ids():
+        preds.observation_modes.setdefault(case_id, spec.OFFICIAL_SCOPES[0])
         speakers = {
             point.speaker
             for point in preds.points.get(case_id, {}).values()

@@ -331,7 +331,7 @@ class TestRobustness(unittest.TestCase):
         import tempfile
         import unittest.mock
 
-        from training.rirbank import BankSpec, build_bank
+        from training.rirbank import BankSpec, _build_shard, build_bank
 
         bank = BankSpec(13, 60, 0.1, (0.15, 0.2), "fallback_ism")
         with tempfile.TemporaryDirectory() as tmp:
@@ -343,6 +343,185 @@ class TestRobustness(unittest.TestCase):
             with unittest.mock.patch("training.rirbank._engine_version", return_value="0.10.1"):
                 with self.assertRaises(ValueError):
                     build_bank(bank, root, workers=1, log=lambda *_: None)
+
+        # Also when the very first build is interrupted after shard 0 before completion:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+
+            def crash_on_second(job):
+                if job[1] == 1:
+                    raise RuntimeError("simulated disconnect after shard 0")
+                return _build_shard(job)
+
+            with unittest.mock.patch("training.rirbank._engine_version", return_value="0.8.5"), \
+                 unittest.mock.patch("training.rirbank._build_shard", side_effect=crash_on_second):
+                with self.assertRaises(RuntimeError):
+                    build_bank(bank, root, workers=1, log=lambda *_: None)
+            self.assertTrue((root / bank.dirname / "bank.json").is_file())
+            with unittest.mock.patch("training.rirbank._engine_version", return_value="0.10.1"):
+                with self.assertRaises(ValueError):
+                    build_bank(bank, root, workers=1, log=lambda *_: None)
+
+    def test_corrupted_best_pt_is_recovered_on_resume(self) -> None:
+        import tempfile
+        import unittest.mock
+
+        from training.engine import Run
+
+        cfg = load_config_dict({"name": "s", "data": {"synthetic": True, "n_rooms_train": 2, "n_rooms_val": 2,
+                                                      "n_val_sessions": 2, "num_workers": 0},
+                                "model": {"name": "proposed", "voice_encoder": "stub", "d_model": 16,
+                                          "n_tac_blocks": 1, "d_spatial": 8},
+                                "train": {"max_steps": 4}})
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            data_dir = Path(tmp) / "data"
+            run = Run(cfg, run_dir, data_dir, device="cpu", log=lambda *_: None)
+            run.step = 2
+            run.best = 0.90
+            run.ckpts.save(run._state(), run.step)
+            (run_dir / "best.pt").write_bytes(b"corrupted-half-upload")
+
+            resumed = Run(cfg, run_dir, data_dir, device="cpu", log=lambda *_: None)
+            resumed._resume()
+            self.assertEqual(resumed.step, 2)
+            self.assertEqual(resumed.best, float("-inf"))
+            fake_val = {
+                "spk_acc": 0.80,
+                "spk_acc_by_M": {"1": 0.5, "2": 0.80, "3": 0.80, "4": 0.80},
+                "spk_acc_n2_cap2": 0.80,
+                "spk_acc_n2_cap2_by_M": {"1": 0.5, "2": 0.80, "3": 0.80, "4": 0.80},
+                "theta_by_M": {"1": 0.5, "2": 0.5, "3": 0.5, "4": 0.5},
+                "theta_official_by_M": {"1": 0.5, "2": 0.5, "3": 0.5, "4": 0.5},
+            }
+            with unittest.mock.patch.object(resumed, "validate", return_value=dict(fake_val)):
+                resumed._validate_and_keep_best()
+            self.assertAlmostEqual(resumed.best, 0.80, places=4)
+            self.assertIsNotNone(resumed._load_best("cpu"))
+
+    def test_fusion_and_fixed_gate_weights_tune_under_official_two_slot_cap(self) -> None:
+        import tempfile
+
+        from training.engine import Run
+
+        # 10-frame 2-talker case:
+        # - At w=0 (voice), frames 0 and 1 have opposite outliers (cos = -1 < -0.30) that consume
+        #   both slots under cap=2 (acc = 0.60), whereas cap=4 opens slots 2 and 3 for talkers 0 and 1
+        #   and achieves acc = 0.80.
+        # - At w=1 (space), only two directions appear so cap=2 and cap=4 both achieve acc = 0.70.
+        # Therefore cap=4 selects w=0.0 (0.80 > 0.70), while official cap=2 selects w=1.0 (0.70 > 0.60).
+        labels = np.array([0, 0, 0, 0, 0, 1, 1, 1, 1, 1], dtype=np.int64)
+        speech = np.ones(10, dtype=bool)
+        voice = np.array([
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, -1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+            [0.0, 0.0, 0.0, 1.0],
+            [0.0, 0.0, 0.0, 1.0],
+            [0.0, 0.0, 0.0, 1.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ], dtype=np.float32)
+        space = np.array([
+            [1.0, 0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0, 0.0],
+        ], dtype=np.float32)
+        case = {
+            "index": 0, "mask": "1111", "M": 4, "N": 2,
+            "speech": speech, "labels": labels, "labels_eval": labels, "pos_labels": labels,
+            "voice": voice.copy(), "space": space.copy(), "spatial": space.copy(),
+            "emb": space.copy(), "tdoa_sep": 1.0,
+            "meta": {"speaker_ids": ["a", "b"], "source_azimuth_deg": [0.0, 90.0]},
+        }
+        cfg_nf = load_config_dict({"name": "nf", "data": {"synthetic": True, "n_rooms_train": 2, "n_rooms_val": 2,
+                                                          "n_val_sessions": 1, "num_workers": 0},
+                                   "model": {"name": "naive_fusion", "voice_encoder": "stub"},
+                                   "slots": {"weight_grid": [0.0, 1.0, 1.0]}})
+        with tempfile.TemporaryDirectory() as tmp:
+            run_nf = Run(cfg_nf, Path(tmp) / "nf", Path(tmp) / "data", device="cpu", log=lambda *_: None)
+            self.assertEqual(run_nf._tune_fusion_weights([dict(case)], cap=4)["best_by_M"]["4"], 0.0)
+            self.assertEqual(run_nf._tune_fusion_weights([dict(case)], cap=2)["best_by_M"]["4"], 1.0)
+            # Pad to 80 frames for official_speaker_check inside validate(quick=False)
+            pad = 80 - len(labels)
+            case80 = {
+                **case,
+                "speech": np.pad(speech, (0, pad), constant_values=False),
+                "labels": np.pad(labels, (0, pad), constant_values=-1),
+                "labels_eval": np.pad(labels, (0, pad), constant_values=-1),
+                "pos_labels": np.pad(labels, (0, pad), constant_values=-1),
+                "voice": np.pad(voice, ((0, pad), (0, 0)), mode="edge"),
+                "space": np.pad(space, ((0, pad), (0, 0)), mode="edge"),
+                "spatial": np.pad(space, ((0, pad), (0, 0)), mode="edge"),
+                "emb": np.pad(space, ((0, pad), (0, 0)), mode="edge"),
+            }
+            val_res = run_nf.validate(quick=False, cases=[dict(case80)])
+            self.assertEqual(val_res["fusion_weight_by_M"]["4"], 1.0)
+            self.assertEqual(val_res["weight_search_cap4"]["best_by_M"]["4"], 0.0)
+
+    def test_run_and_eval_completion_checks_respect_overrides(self) -> None:
+        import json
+        import tempfile
+
+        import eval_t2
+        from training.config import config_fingerprint
+        from training.engine import atomic_save, run_is_complete
+
+        cfg10 = load_config_dict({"name": "p", "model": {"name": "proposed", "voice_encoder": "stub",
+                                                         "d_model": 16, "n_tac_blocks": 1, "d_spatial": 8},
+                                  "train": {"max_steps": 10}})
+        cfg20 = load_config_dict({"name": "p", "model": {"name": "proposed", "voice_encoder": "stub",
+                                                         "d_model": 16, "n_tac_blocks": 1, "d_spatial": 8},
+                                  "train": {"max_steps": 20}})
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            run_dir.mkdir()
+            fp = config_fingerprint(cfg10)
+            atomic_save({"step": 10, "fingerprint": fp, "val": {"select_score": 0.8}}, run_dir / "best.pt")
+            summary = {
+                "run": "run", "config": "p", "system": "proposed", "trained_steps": 10, "best_step": 10,
+                "fingerprint": fp, "theta_official_by_M": {"1": 0.5, "2": 0.5, "3": 0.5, "4": 0.5},
+                "diagnostics": {
+                    "learned_space_only_theta_official_by_M": {"1": 0.5, "2": 0.5, "3": 0.5, "4": 0.5},
+                    "fixed_gate_theta_official_by_M": {"1": 0.5, "2": 0.5, "3": 0.5, "4": 0.5},
+                    "fixed_gate_weight_by_M": {"1": 0.5, "2": 0.5, "3": 0.5, "4": 0.5},
+                },
+            }
+            (run_dir / "summary.json").write_text(json.dumps(summary))
+            self.assertTrue(run_is_complete(run_dir, cfg10))
+            # Increasing max_steps via override must mark the run incomplete
+            self.assertFalse(run_is_complete(run_dir, cfg20))
+
+            # eval_is_complete checks both embeddings.npz fingerprint and score.json metadata/thresholds
+            eval_dir = Path(tmp) / "eval"
+            (eval_dir / "eval-t2" / "full").mkdir(parents=True)
+            exp_fp = eval_t2.inputs_fingerprint(cfg10, eval_t2.REPO / "data" / "eval-t2", run_dir / "best.pt", 0)
+            np.savez_compressed(eval_dir / "eval-t2" / "embeddings.npz", fingerprint=np.asarray(exp_fp))
+            score = {
+                "eval_t2_run": {
+                    "limit": 0,
+                    "theta_by_M": {"1": 0.5, "2": 0.5, "3": 0.5, "4": 0.5},
+                    "weight_by_M": None,
+                    "summary": {"run": "run", "config": "p", "best_step": 10, "fingerprint": fp},
+                }
+            }
+            (eval_dir / "eval-t2" / "full" / "score.json").write_text(json.dumps(score))
+            self.assertTrue(eval_t2.eval_is_complete(
+                eval_dir, cfg10, summary, best=run_dir / "best.pt", sets=("eval-t2",), variants=("full",)
+            ))
+            summary_new = {**summary, "best_step": 20}
+            self.assertFalse(eval_t2.eval_is_complete(
+                eval_dir, cfg20, summary_new, best=run_dir / "best.pt", sets=("eval-t2",), variants=("full",)
+            ))
 
     def test_best_checkpoint_selection_uses_official_two_slot_cap(self) -> None:
         """Selection score must follow the official 2-talker 2-slot cap (M>=2), not the 4-slot diagnostic."""

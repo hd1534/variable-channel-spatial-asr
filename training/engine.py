@@ -294,10 +294,14 @@ class Run:
             self.scaler.load_state_dict(state["scaler"])
         if state.get("amp_dtype") != str(self.amp_dtype):
             self.log(f"[run] note: mixed precision changes from {state.get('amp_dtype')} to {self.amp_dtype} on resume")
-        self.step, self.best = state["step"], state["best"]
+        self.step = state["step"]
         best = self._load_best("cpu")
-        if best is not None:  # best.pt may be newer than the checkpoint we fell back to
-            self.best = max(self.best, best["val"]["select_score"])
+        if best is not None:  # best.pt is the only place best weights live; self.best tracks its score
+            self.best = float(best["val"]["select_score"])
+        else:
+            self.best = -math.inf
+            if math.isfinite(state.get("best", -math.inf)):
+                self.log("[run] best.pt is missing or unreadable; resetting best score so the next validation restores best.pt")
         random.setstate(state["rng"]["python"])
         np.random.set_state(state["rng"]["numpy"])
         torch.set_rng_state(state["rng"]["torch"].cpu())
@@ -313,6 +317,8 @@ class Run:
             return
         self._resume()
         if self.step >= cfg.train.max_steps:
+            if self._load_best("cpu") is None:
+                self._validate_and_keep_best()
             self.log(f"[run] already at step {self.step} >= max_steps {cfg.train.max_steps}")
             return
         stream = TrainStream(cfg.data, self.train_corpus, self.train_bank, cfg.train.seed, start_step=self.step)
@@ -514,46 +520,65 @@ class Run:
                 buckets.setdefault(c["M"], []).append(acc)
         return {str(M): round(float(np.mean(v)), 4) for M, v in sorted(buckets.items())}
 
-    def _tune_fusion_weights(self, cases: list[dict[str, Any]]) -> dict[str, Any]:
-        """Naive fusion: per M, the spatial weight (and with it the threshold) with the best Spk Acc."""
+    def _tune_fusion_weights(self, cases: list[dict[str, Any]], cap: int | None = None,
+                             space_key: str = "space") -> dict[str, Any]:
+        """Per M, the spatial weight (and with it the threshold) with the best Spk Acc under ``cap``."""
+        cap = cap or self.cfg.slots.max_slots
         start, stop, step = self.cfg.slots.weight_grid
         weights = np.round(np.arange(start, stop + step / 2, step), 6)
         thetas = theta_grid(self.cfg.slots.theta_grid)
         chosen: dict[int, float] = {}
+        chosen_theta: dict[int, float] = {}
+        best_acc: dict[int, float] = {}
         curves: dict[str, list[float]] = {}
         for M in sorted({c["M"] for c in cases}):
             group = [c for c in cases if c["M"] == M]
             curve = []
+            thetas_m = []
             for w in weights:
                 for c in group:
                     v = c["voice"] / np.maximum(np.linalg.norm(c["voice"], axis=-1, keepdims=True), 1e-12)
-                    c["emb_w"] = np.concatenate([math.sqrt(w) * c["space"], math.sqrt(1 - w) * v], axis=-1)
-                curve.append(tune_theta(group, thetas, self.cfg.slots.max_slots, emb_key="emb_w")["acc"])
-            chosen[M] = float(weights[int(np.argmax(curve))])
+                    c["emb_w"] = np.concatenate([math.sqrt(w) * c[space_key], math.sqrt(1 - w) * v], axis=-1)
+                tuned = tune_theta(group, thetas, cap, emb_key="emb_w")
+                curve.append(tuned["acc"])
+                thetas_m.append(tuned["theta"])
+            idx = int(np.argmax(curve))
+            chosen[M] = float(weights[idx])
+            chosen_theta[M] = float(thetas_m[idx])
+            best_acc[M] = round(float(curve[idx]), 4)
             curves[str(M)] = [round(a, 4) for a in curve]
         for c in cases:
             c.pop("emb_w", None)
-        return {"weights": weights.tolist(), "spk_acc_by_M": curves, "best_by_M": {str(m): w for m, w in chosen.items()}}
+        return {
+            "weights": weights.tolist(),
+            "spk_acc_by_M": curves,
+            "best_by_M": {str(m): w for m, w in chosen.items()},
+            "best_acc_by_M": {str(m): a for m, a in best_acc.items()},
+            "theta_by_M": {str(m): t for m, t in chosen_theta.items()},
+        }
 
     def validate(self, quick: bool = False, cases: list[dict[str, Any]] | None = None) -> dict[str, Any]:
         cfg = self.cfg
         result: dict[str, Any] = {}
+        cap = cfg.slots.max_slots
+        cases = cases if cases is not None else self.collect_cases()
+        two = [c for c in cases if c["N"] == 2]
+        cap2 = min(spec.MAX_SPEAKERS_PER_TRACK[track_for(2)], cap)
         if cfg.model.name == "naive_fusion" and cfg.model.fusion_weight is None and not quick:
-            cases = cases if cases is not None else self.collect_cases()
-            result["weight_search"] = self._tune_fusion_weights(cases)
+            tune_cases = two if two else cases
+            tune_cap = cap2 if two else cap
+            result["weight_search"] = self._tune_fusion_weights(tune_cases, cap=tune_cap)
+            if two:
+                result["weight_search_cap4"] = self._tune_fusion_weights(cases, cap=cap)
             self.system.weights_by_M.update({int(m): w for m, w in result["weight_search"]["best_by_M"].items()})
             for c in cases:  # same embedding the system now produces, without re-running it
                 w = self.system.weights_by_M[c["M"]]
                 v = c["voice"] / np.maximum(np.linalg.norm(c["voice"], axis=-1, keepdims=True), 1e-12)
                 c["emb"] = np.concatenate([math.sqrt(w) * c["space"], math.sqrt(1 - w) * v], axis=-1)
-        cases = cases if cases is not None else self.collect_cases()
         if cfg.model.name == "naive_fusion":
             result["fusion_weight_by_M"] = {str(m): w for m, w in sorted(self.system.weights_by_M.items())}
 
-        cap = cfg.slots.max_slots
         theta_by_M = self._tune_by_M(cases, cap)
-        two = [c for c in cases if c["N"] == 2]
-        cap2 = min(spec.MAX_SPEAKERS_PER_TRACK[track_for(2)], cap)
         theta_official = self._tune_by_M(two, cap2) if two else {}
         for c in cases:
             c["theta"] = theta_by_M[c["M"]]["theta"]
@@ -657,26 +682,15 @@ class Run:
         if two:
             out["learned_space_only_theta_official_by_M"] = {
                 str(m): t["theta"] for m, t in self._tune_by_M(two, cap2, emb_key="emb_space").items()}
-        start, stop, step = self.cfg.slots.weight_grid
-        fixed: dict[str, float] = {}
-        fixed_w: dict[str, float] = {}
-        for M in sorted({c["M"] for c in cases}):
-            group = [c for c in cases if c["M"] == M]
-            best = (-1.0, 0.0)
-            for w in np.round(np.arange(start, stop + step / 2, step), 6):
-                for c in group:
-                    c["emb_fixed"] = np.concatenate([math.sqrt(w) * c["spatial"], math.sqrt(1 - w) * c["emb_voice"]], axis=-1)
-                acc = tune_theta(group, theta_grid(self.cfg.slots.theta_grid), cap, emb_key="emb_fixed")["acc"]
-                best = max(best, (acc, float(w)))
-            fixed[str(M)], fixed_w[str(M)] = round(best[0], 4), best[1]
-        out["fixed_gate_by_M"] = fixed
-        out["fixed_gate_weight_by_M"] = fixed_w
+        fixed_cap4 = self._tune_fusion_weights(cases, cap=cap, space_key="spatial")
+        out["fixed_gate_by_M"] = fixed_cap4["best_acc_by_M"]
+        out["fixed_gate_weight_by_M"] = dict(fixed_cap4["best_by_M"])
         if two:
-            for c in two:
-                w = fixed_w[str(c["M"])]
-                c["emb_fixed"] = np.concatenate([math.sqrt(w) * c["spatial"], math.sqrt(1 - w) * c["emb_voice"]], axis=-1)
-            out["fixed_gate_theta_official_by_M"] = {
-                str(m): t["theta"] for m, t in self._tune_by_M(two, cap2, emb_key="emb_fixed").items()}
+            fixed_off = self._tune_fusion_weights(two, cap=cap2, space_key="spatial")
+            out["fixed_gate_weight_cap4_by_M"] = fixed_cap4["best_by_M"]
+            out["fixed_gate_weight_by_M"] = fixed_off["best_by_M"]
+            out["fixed_gate_n2_cap2_by_M"] = fixed_off["best_acc_by_M"]
+            out["fixed_gate_theta_official_by_M"] = fixed_off["theta_by_M"]
 
         static = self.collect_cases("static")
         static_theta = self._tune_by_M(static, cap)
@@ -794,3 +808,35 @@ class Run:
         atomic_write_text(self.run_dir / "summary.json", json.dumps(summary, indent=1, ensure_ascii=False))
         self._event(kind="final", **{k: v for k, v in summary.items() if k not in ("weight_search", "diagnostics")})
         return summary
+
+
+def run_is_complete(run_dir: str | Path, cfg: RunConfig) -> bool:
+    """Whether ``run_dir`` already holds a finished, matching ``summary.json`` (and ``best.pt``) for ``cfg``."""
+    run = Path(run_dir)
+    summary_path = run / "summary.json"
+    if not summary_path.is_file():
+        return False
+    try:
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return False
+    fp = config_fingerprint(cfg)
+    if summary.get("fingerprint") != fp or summary.get("system") != cfg.model.name:
+        return False
+    if cfg.model.name != "proposed":
+        return True
+    if (summary.get("trained_steps") or 0) < cfg.train.max_steps:
+        return False
+    best_path = run / "best.pt"
+    if not best_path.is_file() or summary.get("best_step") is None:
+        return False
+    try:
+        state = torch.load(best_path, map_location="cpu", weights_only=False)
+    except Exception:  # noqa: BLE001
+        return False
+    return (
+        state.get("fingerprint") == fp
+        and state.get("step") == summary.get("best_step")
+        and "select_score" in state.get("val", {})
+    )
+

@@ -391,6 +391,59 @@ def run_variant(set_name: str, set_dir: Path, out_dir: Path, emb: dict[str, np.n
     return report
 
 
+def eval_is_complete(
+    out_dir: str | Path,
+    cfg: Any,
+    summary: dict[str, Any] | None,
+    best: Path | None = None,
+    sets: tuple[str, ...] | list[str] = SETS,
+    variants: tuple[str, ...] | list[str] | None = None,
+    components_from: list[str] | None = None,
+    limit: int = 0,
+) -> bool:
+    """Whether ``out_dir`` already holds up-to-date ``embeddings.npz`` and ``score.json`` for ``cfg`` and ``summary``."""
+    if summary is None:
+        return False
+    out = Path(out_dir)
+    name = cfg.model.name
+    variants = list(variants or VARIANTS[name])
+    expected_summary_meta = {k: summary.get(k) for k in ("run", "config", "best_step", "fingerprint")}
+    try:
+        expected_settings = {v: summary_settings(summary, name, v) for v in variants}
+    except SystemExit:
+        return False
+    for set_name in sets:
+        set_dir = REPO / "data" / set_name
+        emb_path = out / set_name / "embeddings.npz"
+        if not emb_path.is_file():
+            return False
+        expected_fp = inputs_fingerprint(cfg, set_dir, best, limit, components_from)
+        try:
+            with np.load(emb_path, allow_pickle=False) as z:
+                if "fingerprint" not in z or str(z["fingerprint"]) != expected_fp:
+                    return False
+        except Exception:  # noqa: BLE001
+            return False
+        for v in variants:
+            score_path = out / set_name / v / "score.json"
+            if not score_path.is_file():
+                return False
+            try:
+                rep = json.loads(score_path.read_text(encoding="utf-8"))
+            except Exception:  # noqa: BLE001
+                return False
+            run_info = rep.get("eval_t2_run") or {}
+            if run_info.get("summary") != expected_summary_meta or run_info.get("limit") != limit:
+                return False
+            theta_exp, weight_exp = expected_settings[v]
+            theta_got = {int(k): float(val) for k, val in (run_info.get("theta_by_M") or {}).items()}
+            weight_raw = run_info.get("weight_by_M")
+            weight_got = {int(k): float(val) for k, val in weight_raw.items()} if weight_raw is not None else None
+            if theta_got != theta_exp or weight_got != weight_exp:
+                return False
+    return True
+
+
 def table_line(report: dict[str, Any]) -> str:
     cells = []
     for m in ("4", "3", "2", "1"):

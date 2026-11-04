@@ -1569,6 +1569,16 @@ class TestLiftedConventions(EvaluatorTestCase):
         self.assertEqual(report["official"]["n_cases"], 0)
         self.assertEqual(report["scopes"]["full_audio"]["n_cases"], 1)
 
+        # Omitting observation_mode on final_transcripts while declaring full_audio on timepoints
+        # must succeed in either record order and report under full_audio.
+        for order in (
+            [point_prediction(0.0, observation_mode="full_audio"), pred_transcripts()],
+            [pred_transcripts(), point_prediction(0.0, observation_mode="full_audio")],
+        ):
+            rep = self.score([gt_transcripts(), gt_timepoint()], order)
+            self.assertEqual(rep["official"]["n_cases"], 0)
+            self.assertEqual(rep["scopes"]["full_audio"]["n_cases"], 1)
+
         with self.assertRaises(evaluate.SubmissionError) as caught:
             self.score(
                 [gt_transcripts(), gt_timepoint(0.0), gt_timepoint(0.25)],
