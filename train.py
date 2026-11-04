@@ -32,7 +32,7 @@ from training.config import load_config  # noqa: E402
 
 SUMMARY_KEYS = (
     "run", "config", "system", "state", "voice_encoder", "trained_steps", "best_step", "train_speakers", "val_speakers",
-    "val_sessions", "val_rooms", "overrides", "commits", "gpu", "gpu_max_mem_gb", "amp_dtype", "bank_engine_version",
+    "val_sessions", "val_rooms", "overrides", "val_protocol_version", "commits", "gpu", "gpu_max_mem_gb", "amp_dtype", "bank_engine_version",
     "wall_sec", "synthetic_data", "theta_by_M", "theta_official_by_M", "theta_learned", "fusion_weight_by_M",
     "spk_acc", "spk_acc_n2_cap2", "spk_acc_n2_cap2_by_M", "official_n2", "spk_acc_by_M", "spk_acc_by_N", "spk_acc_after_change_by_M",
     "spk_acc_steady_by_M", "centroid_acc_by_M", "position_acc_by_M", "causal_ceiling_by_N", "gate_by_M",

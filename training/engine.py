@@ -47,7 +47,7 @@ from models import SYSTEMS, build_system, needs_voice
 from models.common import build_voice_encoder, causal_vad, reference_audio, reference_channel, srp_embeddings, voice_embeddings
 from models.slots import (accuracy_near_changes, best_assignment_accuracy, causal_ceiling, centroid_accuracy,
                           online_slots, theta_grid, tune_theta)
-from training.config import RunConfig, config_fingerprint, config_to_dict
+from training.config import VAL_PROTOCOL_VERSION, RunConfig, config_fingerprint, config_to_dict
 from training.corpus import build_corpora
 from training.data import TrainStream, ValSessions, collate, to_device, with_mask
 from training.render import render_batch
@@ -402,7 +402,7 @@ class Run:
             t_data = time.time()
 
     def _load_best(self, device: str) -> dict[str, Any] | None:
-        """best.pt, or ``None`` if it is missing, cut short (an interrupted Drive upload) or from another config."""
+        """best.pt, or ``None`` if it is missing, cut short (an interrupted Drive upload) or from another config/protocol."""
         path = self.run_dir / "best.pt"
         if not path.is_file():
             return None
@@ -411,7 +411,13 @@ class Run:
         except Exception as exc:  # noqa: BLE001
             self.log(f"[run] ignoring unreadable best.pt: {exc}")
             return None
-        return best if best.get("fingerprint") == self.fingerprint and "select_score" in best.get("val", {}) else None
+        return (
+            best
+            if best.get("fingerprint") == self.fingerprint
+            and best.get("val_protocol_version") == VAL_PROTOCOL_VERSION
+            and "select_score" in best.get("val", {})
+            else None
+        )
 
     def _validate_and_keep_best(self) -> None:
         result = self.validate(quick=True)
@@ -424,8 +430,9 @@ class Run:
         improved = score > self.best
         if improved:
             self.best = score
-            atomic_save({"step": self.step, "fingerprint": self.fingerprint, "model": self.system.state_dict(),
-                         "loss": self.loss_fn.state_dict(), "val": result}, self.run_dir / "best.pt")
+            atomic_save({"step": self.step, "fingerprint": self.fingerprint, "val_protocol_version": VAL_PROTOCOL_VERSION,
+                         "model": self.system.state_dict(), "loss": self.loss_fn.state_dict(), "val": result},
+                        self.run_dir / "best.pt")
         self._event(kind="val", improved=improved, **{k: v for k, v in result.items() if k != "cases"})
         extra = f" position_acc={result['position_acc_by_M']}" if "position_acc_by_M" in result else ""
         self.log(f"[val] step {self.step} select(M>=2,cap2)={score:.4f} spk_acc_n2_cap2={result.get('spk_acc_n2_cap2', result['spk_acc']):.4f} "
@@ -791,6 +798,7 @@ class Run:
             "val_rooms": self.cfg.data.n_rooms_val,
             "overrides": self.overrides,
             "fingerprint": self.fingerprint,
+            "val_protocol_version": VAL_PROTOCOL_VERSION,
             "commit": self.commit,
             "commits": self.commits,
             "amp_dtype": str(getattr(self, "amp_dtype", None)) if self.system.trainable else None,
@@ -821,7 +829,11 @@ def run_is_complete(run_dir: str | Path, cfg: RunConfig) -> bool:
     except Exception:  # noqa: BLE001
         return False
     fp = config_fingerprint(cfg)
-    if summary.get("fingerprint") != fp or summary.get("system") != cfg.model.name:
+    if (
+        summary.get("fingerprint") != fp
+        or summary.get("system") != cfg.model.name
+        or summary.get("val_protocol_version") != VAL_PROTOCOL_VERSION
+    ):
         return False
     if cfg.model.name != "proposed":
         return True
@@ -836,6 +848,7 @@ def run_is_complete(run_dir: str | Path, cfg: RunConfig) -> bool:
         return False
     return (
         state.get("fingerprint") == fp
+        and state.get("val_protocol_version") == VAL_PROTOCOL_VERSION
         and state.get("step") == summary.get("best_step")
         and "select_score" in state.get("val", {})
     )

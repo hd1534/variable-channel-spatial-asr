@@ -473,7 +473,7 @@ class TestRobustness(unittest.TestCase):
         import tempfile
 
         import eval_t2
-        from training.config import config_fingerprint
+        from training.config import VAL_PROTOCOL_VERSION, config_fingerprint
         from training.engine import atomic_save, run_is_complete
 
         cfg10 = load_config_dict({"name": "p", "model": {"name": "proposed", "voice_encoder": "stub",
@@ -486,10 +486,12 @@ class TestRobustness(unittest.TestCase):
             run_dir = Path(tmp) / "run"
             run_dir.mkdir()
             fp = config_fingerprint(cfg10)
-            atomic_save({"step": 10, "fingerprint": fp, "val": {"select_score": 0.8}}, run_dir / "best.pt")
+            atomic_save({"step": 10, "fingerprint": fp, "val_protocol_version": VAL_PROTOCOL_VERSION,
+                         "val": {"select_score": 0.8}}, run_dir / "best.pt")
             summary = {
                 "run": "run", "config": "p", "system": "proposed", "trained_steps": 10, "best_step": 10,
-                "fingerprint": fp, "theta_official_by_M": {"1": 0.5, "2": 0.5, "3": 0.5, "4": 0.5},
+                "fingerprint": fp, "val_protocol_version": VAL_PROTOCOL_VERSION,
+                "theta_official_by_M": {"1": 0.5, "2": 0.5, "3": 0.5, "4": 0.5},
                 "diagnostics": {
                     "learned_space_only_theta_official_by_M": {"1": 0.5, "2": 0.5, "3": 0.5, "4": 0.5},
                     "fixed_gate_theta_official_by_M": {"1": 0.5, "2": 0.5, "3": 0.5, "4": 0.5},
@@ -511,7 +513,8 @@ class TestRobustness(unittest.TestCase):
                     "limit": 0,
                     "theta_by_M": {"1": 0.5, "2": 0.5, "3": 0.5, "4": 0.5},
                     "weight_by_M": None,
-                    "summary": {"run": "run", "config": "p", "best_step": 10, "fingerprint": fp},
+                    "summary": {"run": "run", "config": "p", "best_step": 10, "fingerprint": fp,
+                                "val_protocol_version": VAL_PROTOCOL_VERSION},
                 }
             }
             (eval_dir / "eval-t2" / "full" / "score.json").write_text(json.dumps(score))
@@ -522,6 +525,63 @@ class TestRobustness(unittest.TestCase):
             self.assertFalse(eval_t2.eval_is_complete(
                 eval_dir, cfg20, summary_new, best=run_dir / "best.pt", sets=("eval-t2",), variants=("full",)
             ))
+            # A score.json written before the protocol version existed must be re-scored
+            old_score = json.loads(json.dumps(score))
+            old_score["eval_t2_run"]["summary"].pop("val_protocol_version")
+            (eval_dir / "eval-t2" / "full" / "score.json").write_text(json.dumps(old_score))
+            self.assertFalse(eval_t2.eval_is_complete(
+                eval_dir, cfg10, summary, best=run_dir / "best.pt", sets=("eval-t2",), variants=("full",)
+            ))
+
+    def test_completion_rejects_artifacts_from_an_older_validation_protocol(self) -> None:
+        """A baseline summary from 1f71328 (4-slot weights, no protocol version) must not count as complete."""
+        import argparse
+        import json
+        import tempfile
+
+        import eval_t2
+        from training.config import VAL_PROTOCOL_VERSION, config_fingerprint
+        from training.engine import atomic_save, run_is_complete
+
+        cfg_nf = load_config_dict({"name": "naive_fusion", "model": {"name": "naive_fusion"}})
+        cfg_p = load_config_dict({"name": "p", "model": {"name": "proposed", "voice_encoder": "stub",
+                                                         "d_model": 16, "n_tac_blocks": 1, "d_spatial": 8},
+                                  "train": {"max_steps": 10}})
+        theta = {"1": 0.5, "2": 0.5, "3": 0.5, "4": 0.5}
+        with tempfile.TemporaryDirectory() as tmp:
+            # (1) untrained rung: an old summary has the right fingerprint but no protocol version
+            nf_dir = Path(tmp) / "nf"
+            nf_dir.mkdir()
+            old = {"run": "nf", "config": "naive_fusion", "system": "naive_fusion",
+                   "fingerprint": config_fingerprint(cfg_nf), "theta_official_by_M": theta,
+                   "fusion_weight_by_M": {"1": 0.0, "2": 0.3, "3": 0.3, "4": 0.3}}
+            (nf_dir / "summary.json").write_text(json.dumps(old))
+            self.assertFalse(run_is_complete(nf_dir, cfg_nf))
+            (nf_dir / "summary.json").write_text(json.dumps({**old, "val_protocol_version": VAL_PROTOCOL_VERSION - 1}))
+            self.assertFalse(run_is_complete(nf_dir, cfg_nf))
+            (nf_dir / "summary.json").write_text(json.dumps({**old, "val_protocol_version": VAL_PROTOCOL_VERSION}))
+            self.assertTrue(run_is_complete(nf_dir, cfg_nf))
+
+            # eval_t2 refuses an old-protocol summary instead of scoring with its 4-slot weights
+            cfg_path = Path(tmp) / "naive_fusion.json"
+            cfg_path.write_text(json.dumps({"name": "naive_fusion", "model": {"name": "naive_fusion"}}))
+            old_path = Path(tmp) / "old_summary.json"
+            old_path.write_text(json.dumps(old))
+            ns = argparse.Namespace(run_dir=None, config=str(cfg_path), summary=str(old_path), tune_on_eval=False)
+            with self.assertRaises(SystemExit):
+                eval_t2.load_system_inputs(ns)
+            with self.assertRaises(SystemExit):
+                eval_t2.summary_settings(old, "naive_fusion", "full")
+
+            # (2) trained rung: an old best.pt without the protocol version is neither complete nor resumed as best
+            p_dir = Path(tmp) / "p"
+            p_dir.mkdir()
+            fp = config_fingerprint(cfg_p)
+            atomic_save({"step": 10, "fingerprint": fp, "val": {"select_score": 0.8}}, p_dir / "best.pt")
+            (p_dir / "summary.json").write_text(json.dumps({
+                "run": "p", "config": "p", "system": "proposed", "trained_steps": 10, "best_step": 10,
+                "fingerprint": fp, "val_protocol_version": VAL_PROTOCOL_VERSION, "theta_official_by_M": theta}))
+            self.assertFalse(run_is_complete(p_dir, cfg_p))
 
     def test_best_checkpoint_selection_uses_official_two_slot_cap(self) -> None:
         """Selection score must follow the official 2-talker 2-slot cap (M>=2), not the 4-slot diagnostic."""

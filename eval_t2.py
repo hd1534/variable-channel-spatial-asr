@@ -49,7 +49,7 @@ import evaluate  # noqa: E402
 import spec  # noqa: E402
 import transcripts as tr  # noqa: E402
 from models.slots import best_assignment_accuracy, online_slots, theta_grid, tune_theta  # noqa: E402
-from training.config import config_fingerprint, load_config, load_config_dict  # noqa: E402
+from training.config import VAL_PROTOCOL_VERSION, config_fingerprint, load_config, load_config_dict  # noqa: E402
 from training.official import timepoint_records, track_for  # noqa: E402
 
 REPO = Path(__file__).resolve().parent
@@ -73,6 +73,11 @@ def load_system_inputs(args: argparse.Namespace) -> tuple[Any, dict[str, Any] | 
         summary_path = run / "summary.json"
         summary = json.loads(summary_path.read_text(encoding="utf-8")) if summary_path.is_file() else None
         best = run / "best.pt" if cfg.model.name == "proposed" else None
+        if summary is not None and not args.tune_on_eval and summary.get("val_protocol_version") != VAL_PROTOCOL_VERSION:
+            raise SystemExit(
+                f"{summary_path} uses validation protocol {summary.get('val_protocol_version')!r}, "
+                f"expected {VAL_PROTOCOL_VERSION}: rerun train.py on {run} to refresh it"
+            )
         if best is not None and summary is not None and not args.tune_on_eval:
             # summary.json is written once, by finalize; best.pt can change after it
             # (a resumed run that dropped before finalizing).  Thresholds tuned for
@@ -80,8 +85,11 @@ def load_system_inputs(args: argparse.Namespace) -> tuple[Any, dict[str, Any] | 
             import torch
 
             state = torch.load(best, map_location="cpu", weights_only=False)
-            if summary.get("best_step") is None or (state.get("step"), state.get("fingerprint")) != (
-                    summary["best_step"], summary.get("fingerprint")):
+            if (
+                summary.get("best_step") is None
+                or state.get("val_protocol_version") != VAL_PROTOCOL_VERSION
+                or (state.get("step"), state.get("fingerprint")) != (summary["best_step"], summary.get("fingerprint"))
+            ):
                 raise SystemExit(f"{summary_path} was not written for this best.pt (step {state.get('step')} vs "
                                  f"{summary.get('best_step')}): rerun train.py on {run} to refresh it")
         return cfg, summary, best
@@ -92,6 +100,11 @@ def load_system_inputs(args: argparse.Namespace) -> tuple[Any, dict[str, Any] | 
     if summary is not None:
         if summary.get("system") != cfg.model.name:
             raise SystemExit(f"{args.summary} belongs to {summary.get('system')!r}, not {cfg.model.name!r}")
+        if summary.get("val_protocol_version") != VAL_PROTOCOL_VERSION:
+            raise SystemExit(
+                f"{args.summary} uses validation protocol {summary.get('val_protocol_version')!r}, "
+                f"expected {VAL_PROTOCOL_VERSION}: rerun train.py to refresh it"
+            )
         changed = [k for k in summary.get("overrides") or {} if k.split(".")[0] in ("model", "slots")]
         if changed:
             raise SystemExit(f"that validation run overrode {changed}; pass its run directory as --run-dir "
@@ -292,6 +305,11 @@ def variant_parts(variant: str, name: str) -> tuple[str, str | None]:
 
 def summary_settings(summary: dict[str, Any], name: str, variant: str) -> tuple[dict[int, float], dict[int, float] | None]:
     """``(theta_by_M, weight_by_M or None)`` that validation chose (two-talker cases, cap 2)."""
+    if summary.get("val_protocol_version") != VAL_PROTOCOL_VERSION:
+        raise SystemExit(
+            f"summary.json uses validation protocol {summary.get('val_protocol_version')!r}, "
+            f"expected {VAL_PROTOCOL_VERSION}: rerun train.py on the run directory with this commit"
+        )
     diag = summary.get("diagnostics") or {}
     if variant == "learned_space":
         theta, weight = diag.get("learned_space_only_theta_official_by_M"), None
@@ -407,7 +425,9 @@ def eval_is_complete(
     out = Path(out_dir)
     name = cfg.model.name
     variants = list(variants or VARIANTS[name])
-    expected_summary_meta = {k: summary.get(k) for k in ("run", "config", "best_step", "fingerprint")}
+    expected_summary_meta = {
+        k: summary.get(k) for k in ("run", "config", "best_step", "fingerprint", "val_protocol_version")
+    }
     try:
         expected_settings = {v: summary_settings(summary, name, v) for v in variants}
     except SystemExit:
@@ -508,7 +528,8 @@ def main(argv: list[str] | None = None) -> int:
                     "thresholds": "eval set (optimistic)" if args.tune_on_eval else "validation",
                     "theta_by_M": theta, "weight_by_M": weight, "asr": cache.backend,
                     "n_cases": int(len(M)), "limit": args.limit,
-                    "summary": {k: (summary or {}).get(k) for k in ("run", "config", "best_step", "fingerprint")}}
+                    "summary": {k: (summary or {}).get(k)
+                                for k in ("run", "config", "best_step", "fingerprint", "val_protocol_version")}}
             report = run_variant(set_name, set_dir, Path(args.out) / set_name / variant, emb, slots, cache, backend, info)
             if report is None:
                 return 2
