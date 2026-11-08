@@ -31,16 +31,34 @@ import math
 from typing import Any
 
 import torch
+import torch.nn.functional as F
 
 import spec
 from simulate import PEAK_CEILING
+from training.scenes import NOISE_HOP, NOISE_N_FFT, PINK_KNEE_HZ
 
 CHUNK_SESSIONS = 4
 """Sessions per FFT pass: bounds the transient memory (about 0.6 GB at K = 3)."""
 
-NOISE_N_FFT = 512
-NOISE_HOP = 256
-PINK_KNEE_HZ = 100.0
+
+def _noise_overlap_add(spectra: torch.Tensor, n_samples: int) -> torch.Tensor:
+    """Synthesize ``[B, C, S]`` noise using the evaluation generator's raw Hann overlap-add.
+
+    ``spectra`` has shape ``[B, F, T, C]``. Unlike ``torch.istft``, this
+    operation does not divide by the sum of squared windows: that extra,
+    time-varying normalization would change the committed evaluation noise.
+    """
+    batch_size, _, n_frames, channels = spectra.shape
+    window: torch.Tensor = torch.hann_window(NOISE_N_FFT, device=spectra.device, dtype=spectra.real.dtype)
+    frames: torch.Tensor = torch.fft.irfft(spectra.permute(0, 3, 1, 2), n=NOISE_N_FFT, dim=2)
+    frames = frames * window[None, None, :, None]
+    output_length: int = (n_frames - 1) * NOISE_HOP + NOISE_N_FFT
+    noise: torch.Tensor = F.fold(
+        frames.reshape(batch_size * channels, NOISE_N_FFT, n_frames),
+        output_size=(1, output_length), kernel_size=(1, NOISE_N_FFT), stride=(1, NOISE_HOP),
+    ).reshape(batch_size, channels, output_length)
+    start: int = NOISE_N_FFT // 2
+    return noise[..., start : start + n_samples]
 
 
 def diffuse_noise(mic_xy: torch.Tensor, n_samples: int, seeds: torch.Tensor) -> torch.Tensor:
@@ -62,10 +80,7 @@ def diffuse_noise(mic_xy: torch.Tensor, n_samples: int, seeds: torch.Tensor) -> 
     spectra = torch.einsum("bfij,bftj->bfti", mixing.to(torch.complex64), white)
     pink = (freqs.clamp_min(PINK_KNEE_HZ) / PINK_KNEE_HZ).rsqrt()
     spectra = spectra * pink[None, :, None, None]
-    frames = spectra.permute(0, 3, 1, 2).reshape(B * C, n_bins, n_frames)
-    window = torch.hann_window(NOISE_N_FFT, device=device)
-    noise = torch.istft(frames, NOISE_N_FFT, NOISE_HOP, window=window, length=n_samples)
-    return noise.reshape(B, C, n_samples)
+    return _noise_overlap_add(spectra, n_samples)
 
 
 def _render(batch: dict[str, Any], lo: int, hi: int) -> torch.Tensor:

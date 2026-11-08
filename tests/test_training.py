@@ -469,6 +469,7 @@ class TestRobustness(unittest.TestCase):
             self.assertEqual(val_res["weight_search_cap4"]["best_by_M"]["4"], 0.0)
 
     def test_run_and_eval_completion_checks_respect_overrides(self) -> None:
+        """Completion requires matching settings, protocol, ASR and training progress."""
         import json
         import tempfile
 
@@ -511,6 +512,7 @@ class TestRobustness(unittest.TestCase):
             score = {
                 "eval_t2_run": {
                     "limit": 0,
+                    "asr": eval_t2.asr_backend_id(eval_t2.DEFAULT_ASR),
                     "theta_by_M": {"1": 0.5, "2": 0.5, "3": 0.5, "4": 0.5},
                     "weight_by_M": None,
                     "summary": {"run": "run", "config": "p", "best_step": 10, "fingerprint": fp,
@@ -629,12 +631,13 @@ class TestRobustness(unittest.TestCase):
             self.assertEqual(run.step, 0)
 
     def test_eval_t2_guards_config_fingerprint_and_component_cache(self) -> None:
+        """Reject different current-protocol configs and incompatible or changed component caches."""
         import argparse
         import json
         import tempfile
 
         import eval_t2
-        from training.config import config_fingerprint
+        from training.config import VAL_PROTOCOL_VERSION, config_fingerprint
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -648,9 +651,10 @@ class TestRobustness(unittest.TestCase):
             cfg_s10_path.write_text(json.dumps({"name": "s10", "model": {"name": "space_only", "srp_temperature": 10.0}}))
             sum_s1_path = root / "summary_s1.json"
             sum_s1_path.write_text(json.dumps({"system": "space_only", "fingerprint": config_fingerprint(cfg_s1),
+                                               "val_protocol_version": VAL_PROTOCOL_VERSION,
                                                "theta_official_by_M": {"1": 0.5, "2": 0.5, "3": 0.5, "4": 0.5}}))
             ns = argparse.Namespace(run_dir=None, config=str(cfg_s10_path), summary=str(sum_s1_path), tune_on_eval=False)
-            with self.assertRaises(SystemExit):
+            with self.assertRaisesRegex(SystemExit, "config fingerprint"):
                 eval_t2.load_system_inputs(ns)
 
             # (2) --components-from invalidates cache when an upstream component changes

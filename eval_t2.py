@@ -63,6 +63,7 @@ VARIANTS = {
     "proposed": ("full", "learned_space", "fixed_gate"),
 }
 LOCAL_ASR = {"wav2vec2": "facebook/wav2vec2-base-960h"}
+DEFAULT_ASR: str = "wav2vec2"
 
 
 # -- inputs --------------------------------------------------------------------
@@ -357,8 +358,14 @@ def slots_for(emb: dict[str, np.ndarray], key: str, fuse_with: str | None, M: np
     return out
 
 
+def asr_backend_id(name: str) -> str:
+    """Resolve a local ASR alias or preserve an external cache backend ID."""
+    return LOCAL_ASR.get(name, name)
+
+
 def asr_cache(args: argparse.Namespace) -> tuple[tr.SegmentCache, Any]:
-    backend_id = LOCAL_ASR.get(args.asr, args.asr)
+    """Open the requested backend's transcript cache and optional local recognizer."""
+    backend_id = asr_backend_id(args.asr)
     path = Path(args.asr_cache) / f"{backend_id.replace('/', '__')}.jsonl"
     backend = None
     if args.asr in LOCAL_ASR:
@@ -418,8 +425,9 @@ def eval_is_complete(
     variants: tuple[str, ...] | list[str] | None = None,
     components_from: list[str] | None = None,
     limit: int = 0,
+    asr: str = DEFAULT_ASR,
 ) -> bool:
-    """Whether ``out_dir`` already holds up-to-date ``embeddings.npz`` and ``score.json`` for ``cfg`` and ``summary``."""
+    """Whether embeddings and scores match the requested settings, validation summary and ASR backend."""
     if summary is None:
         return False
     out = Path(out_dir)
@@ -453,7 +461,11 @@ def eval_is_complete(
             except Exception:  # noqa: BLE001
                 return False
             run_info = rep.get("eval_t2_run") or {}
-            if run_info.get("summary") != expected_summary_meta or run_info.get("limit") != limit:
+            if (
+                run_info.get("summary") != expected_summary_meta
+                or run_info.get("limit") != limit
+                or run_info.get("asr") != asr_backend_id(asr)
+            ):
                 return False
             theta_exp, weight_exp = expected_settings[v]
             theta_got = {int(k): float(val) for k, val in (run_info.get("theta_by_M") or {}).items()}
@@ -485,7 +497,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--sets", nargs="+", default=list(SETS), choices=SETS)
     parser.add_argument("--variants", nargs="+", help="subset of the system's variants (default: all)")
     parser.add_argument("--out", required=True)
-    parser.add_argument("--asr", default="wav2vec2",
+    parser.add_argument("--asr", default=DEFAULT_ASR,
                         help="'wav2vec2' (run here) or the id of a backend whose cache another machine fills")
     parser.add_argument("--asr-cache", default=str(REPO / "runs" / "asr_cache"))
     parser.add_argument("--device", default="cpu")

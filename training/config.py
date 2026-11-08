@@ -37,10 +37,11 @@ fixed-weight sum, and the learned fusion."""
 STATE_MODES: tuple[str, ...] = ("carry", "reset")
 """Proposed model only: ``carry`` = Carry-Over, ``reset`` = Chunk-Reset."""
 
-VAL_PROTOCOL_VERSION: int = 2
+VAL_PROTOCOL_VERSION: int = 3
 """Validation protocol version recorded in ``summary.json`` and ``best.pt``
 (v2 = official 2-talker, 2-slot cap for checkpoint selection, threshold tuning
-and fusion/fixed-gate weight search)."""
+and fusion/fixed-gate weight search; v3 additionally matches the evaluation
+generator's Hann overlap-add noise synthesis)."""
 
 
 @dataclass

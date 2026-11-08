@@ -27,6 +27,7 @@ it was started with, and code from another commit unless asked to
 
 from __future__ import annotations
 
+import copy
 import itertools
 import json
 import math
@@ -56,6 +57,21 @@ from training.official import official_speaker_check, track_for
 from training.rirbank import BankSpec, build_bank
 
 REPO = Path(__file__).resolve().parent.parent
+
+
+def _rng_state() -> dict[str, Any]:
+    """Capture all random generators needed to resume training unchanged."""
+    return {"python": random.getstate(), "numpy": np.random.get_state(), "torch": torch.get_rng_state(),
+            "cuda": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None}
+
+
+def _restore_rng_state(state: dict[str, Any]) -> None:
+    """Restore a checkpoint's CPU and available CUDA random generators."""
+    random.setstate(state["python"])
+    np.random.set_state(state["numpy"])
+    torch.set_rng_state(state["torch"].cpu())
+    if state["cuda"] is not None and torch.cuda.is_available():
+        torch.cuda.set_rng_state_all([item.cpu() for item in state["cuda"]])
 
 
 def pick_device(requested: str | None = None) -> str:
@@ -255,6 +271,7 @@ class Run:
             fh.write(json.dumps(record, ensure_ascii=False) + "\n")
 
     def _state(self) -> dict[str, Any]:
+        """Capture model, optimizer, progress and random state for a resumable checkpoint."""
         return {
             "step": self.step,
             "best": self.best,
@@ -268,13 +285,14 @@ class Run:
             "opt": self.opt.state_dict(),
             "sched": self.sched.state_dict(),
             "scaler": self.scaler.state_dict(),
-            "rng": {"python": random.getstate(), "numpy": np.random.get_state(), "torch": torch.get_rng_state(),
-                    "cuda": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None},
+            "rng": _rng_state(),
         }
 
     def _resume(self) -> None:
+        """Restore training state and refresh compatible best weights under the current protocol."""
         state = self.ckpts.load_latest(self.device, self.log)
         if state is None:
+            self._restore_best_selection()
             return
         if state["fingerprint"] != self.fingerprint:
             raise SystemExit(f"{self.ckpts.dir} belongs to another config; refusing to resume")
@@ -295,19 +313,62 @@ class Run:
         if state.get("amp_dtype") != str(self.amp_dtype):
             self.log(f"[run] note: mixed precision changes from {state.get('amp_dtype')} to {self.amp_dtype} on resume")
         self.step = state["step"]
-        best = self._load_best("cpu")
-        if best is not None:  # best.pt is the only place best weights live; self.best tracks its score
+        _restore_rng_state(state["rng"])
+        self._restore_best_selection()
+        self.log(f"[run] resumed at step {self.step} (best selection score {self.best:.4f}, commits {self.commits})")
+
+    def _restore_best_selection(self) -> None:
+        """Keep current scores or revalidate older, model-compatible best weights."""
+        best: dict[str, Any] | None = self._load_best("cpu", require_current_protocol=False)
+        self.best = -math.inf
+        if best is None:
+            return
+        if best.get("val_protocol_version") == VAL_PROTOCOL_VERSION and "select_score" in best.get("val", {}):
             self.best = float(best["val"]["select_score"])
         else:
-            self.best = -math.inf
-            if math.isfinite(state.get("best", -math.inf)):
-                self.log("[run] best.pt is missing or unreadable; resetting best score so the next validation restores best.pt")
-        random.setstate(state["rng"]["python"])
-        np.random.set_state(state["rng"]["numpy"])
-        torch.set_rng_state(state["rng"]["torch"].cpu())
-        if state["rng"]["cuda"] is not None and torch.cuda.is_available():
-            torch.cuda.set_rng_state_all([s.cpu() for s in state["rng"]["cuda"]])
-        self.log(f"[run] resumed at step {self.step} (best selection score {self.best:.4f}, commits {self.commits})")
+            self._revalidate_best(best)
+
+    def _revalidate_best(self, previous: dict[str, Any]) -> None:
+        """Compare old best and latest weights with fresh scores, preserving the resumed training state.
+
+        The original file is replaced only after both candidates have been
+        scored, so an interrupted migration is retried on the next resume.
+        """
+        model_state: dict[str, Any] = copy.deepcopy(self.system.state_dict())
+        loss_state: dict[str, Any] = copy.deepcopy(self.loss_fn.state_dict())
+        step: int = self.step
+        training: bool = self.system.training
+        rng: dict[str, Any] = _rng_state()
+        self.log(f"[run] revalidating best.pt from protocol {previous.get('val_protocol_version')!r}")
+        try:
+            self.system.load_state_dict(previous["model"])
+            if "loss" in previous:
+                self.loss_fn.load_state_dict(previous["loss"])
+            self.step = int(previous["step"])
+            old_result: dict[str, Any] = self.validate(quick=True)
+            old_result["select_score"] = self._selection_score(old_result)
+            candidate: dict[str, Any] = {
+                **previous, "val_protocol_version": VAL_PROTOCOL_VERSION, "val": old_result,
+                "loss": copy.deepcopy(self.loss_fn.state_dict()),
+            }
+            self.system.load_state_dict(model_state)
+            self.loss_fn.load_state_dict(loss_state)
+            self.step = step
+            latest_result: dict[str, Any] = self.validate(quick=True)
+            latest_result["select_score"] = self._selection_score(latest_result)
+            if latest_result["select_score"] > old_result["select_score"]:
+                candidate = self._best_checkpoint(latest_result)
+            atomic_save(candidate, self.run_dir / "best.pt")
+            self.best = float(candidate["val"]["select_score"])
+            self._event(kind="val_protocol_migration", previous_protocol=previous.get("val_protocol_version"),
+                        val_protocol_version=VAL_PROTOCOL_VERSION, old_best_score=old_result["select_score"],
+                        latest_score=latest_result["select_score"], best_step=candidate["step"])
+        finally:
+            self.system.load_state_dict(model_state)
+            self.loss_fn.load_state_dict(loss_state)
+            self.step = step
+            self.system.train(training)
+            _restore_rng_state(rng)
 
     # -- training ----------------------------------------------------------------
     def fit(self) -> None:
@@ -401,8 +462,8 @@ class Run:
                 break
             t_data = time.time()
 
-    def _load_best(self, device: str) -> dict[str, Any] | None:
-        """best.pt, or ``None`` if it is missing, cut short (an interrupted Drive upload) or from another config/protocol."""
+    def _load_best(self, device: str, *, require_current_protocol: bool = True) -> dict[str, Any] | None:
+        """Read compatible weights, optionally requiring a current-protocol selection score."""
         path = self.run_dir / "best.pt"
         if not path.is_file():
             return None
@@ -411,28 +472,36 @@ class Run:
         except Exception as exc:  # noqa: BLE001
             self.log(f"[run] ignoring unreadable best.pt: {exc}")
             return None
-        return (
-            best
-            if best.get("fingerprint") == self.fingerprint
-            and best.get("val_protocol_version") == VAL_PROTOCOL_VERSION
-            and "select_score" in best.get("val", {})
-            else None
-        )
+        if not isinstance(best, dict) or best.get("fingerprint") != self.fingerprint or not {"model", "step"} <= best.keys():
+            return None
+        if require_current_protocol and (
+            best.get("val_protocol_version") != VAL_PROTOCOL_VERSION or "select_score" not in best.get("val", {})
+        ):
+            return None
+        return best
+
+    @staticmethod
+    def _selection_score(result: dict[str, Any]) -> float:
+        """Select on official two-slot M>=2 accuracy, with the general-N diagnostic as fallback."""
+        by_m = result.get("spk_acc_n2_cap2_by_M") or result["spk_acc_by_M"]
+        multi: list[float] = [value for microphones, value in by_m.items() if int(microphones) >= 2]
+        return round(float(np.mean(multi)), 4) if multi else result.get("spk_acc_n2_cap2", result["spk_acc"])
+
+    def _best_checkpoint(self, result: dict[str, Any]) -> dict[str, Any]:
+        """Describe the current weights and their validation result for an immediate atomic save."""
+        return {"step": self.step, "fingerprint": self.fingerprint, "val_protocol_version": VAL_PROTOCOL_VERSION,
+                "model": self.system.state_dict(), "loss": self.loss_fn.state_dict(), "val": result}
 
     def _validate_and_keep_best(self) -> None:
-        result = self.validate(quick=True)
-        # Chosen on M >= 2 under the official 2-talker, 2-slot cap (or spk_acc_by_M when no N=2 cases exist):
-        # at M = 1 the model is voice-only by construction.
+        """Validate current weights and atomically retain an improved selection score."""
+        result: dict[str, Any] = self.validate(quick=True)
+        result["select_score"] = self._selection_score(result)
         by_m = result.get("spk_acc_n2_cap2_by_M") or result["spk_acc_by_M"]
-        multi = [v for m, v in by_m.items() if int(m) >= 2]
-        result["select_score"] = round(float(np.mean(multi)), 4) if multi else result.get("spk_acc_n2_cap2", result["spk_acc"])
         score = result["select_score"]
         improved = score > self.best
         if improved:
             self.best = score
-            atomic_save({"step": self.step, "fingerprint": self.fingerprint, "val_protocol_version": VAL_PROTOCOL_VERSION,
-                         "model": self.system.state_dict(), "loss": self.loss_fn.state_dict(), "val": result},
-                        self.run_dir / "best.pt")
+            atomic_save(self._best_checkpoint(result), self.run_dir / "best.pt")
         self._event(kind="val", improved=improved, **{k: v for k, v in result.items() if k != "cases"})
         extra = f" position_acc={result['position_acc_by_M']}" if "position_acc_by_M" in result else ""
         self.log(f"[val] step {self.step} select(M>=2,cap2)={score:.4f} spk_acc_n2_cap2={result.get('spk_acc_n2_cap2', result['spk_acc']):.4f} "
