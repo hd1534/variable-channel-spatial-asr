@@ -68,7 +68,7 @@ def print_rows(rows: Sequence[dict[str, Any]]) -> None:
     for row in rows:
         populations.setdefault((row["set"], row["comparison_M"]), set()).add(row["case_sha256"])
     print("M = proposed comparison condition; input = actual microphones used. No automatic ranking.")
-    print(f"{'set/M':<20} {'system':<34} {'input':>5} {'scope':<10} {'ASR':<25} {'cases':>5} {'SpkAcc':>8} {'cpWER':>8} population")
+    print(f"{'set/M':<20} {'system':<46} {'input':>5} {'scope':<10} {'ASR':<25} {'cases':>5} {'SpkAcc':>8} {'cpWER':>8} population")
     for row in sorted(rows, key=lambda r: (r["set"], r["comparison_M"], r["observation_mode"], r["system"])):
         population = row["case_sha256"][:8]
         if len(populations[(row["set"], row["comparison_M"])]) > 1:
@@ -76,7 +76,7 @@ def print_rows(rows: Sequence[dict[str, Any]]) -> None:
         metrics = row["metrics"]
         condition = f"{row['set']}/M{row['comparison_M']}"
         asr = row["asr"].split("/")[-1].split("@")[0]
-        print(f"{condition:<20} {row['system']:<34} {row['input_channels']:>5} {row['observation_mode']:<10} "
+        print(f"{condition:<20} {row['system']:<46} {row['input_channels']:>5} {row['observation_mode']:<10} "
               f"{asr:<25} {row['n_cases']:>5} {metrics['speaker_attribution_accuracy']:>8.3f} {metrics['cpwer']:>8.3f} {population}")
 
 
