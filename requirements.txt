@@ -65,3 +65,6 @@ speechbrain==1.1.2    # 확인됨: 화자 구분 시스템의 동결 화자 인�
 #    `undefined symbol` 로 임포트가 실패한다.
 # 4) macOS arm64 에서 pyroomacoustics 는 소스 빌드가 걸릴 수 있다
 #    (C++ 확장). 실패하면 Xcode CLT 설치 후 재시도.
+# 5) 최신 Qwen/Nemotron/VibeVoice/MOSS는 이 환경에 설치하지 않는다.
+#    setup_asr_env.py --profile <qwen|nemotron|vibevoice|moss> 로 모델별 venv를 만들고
+#    modern_asr.py 작업자를 별도 프로세스로 실행한다. README의 최신 ASR 절 참고.

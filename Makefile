@@ -239,7 +239,7 @@ selftest:
 
 # compile: 저장소의 모든 파이썬 파일을 바이트컴파일한다. 지연 임포트 규칙이 지켜지면 의존성 없이 통과한다.
 compile:
-	$(PY) -m compileall -q spec.py make_eval_dev.py make_eval_t2.py train.py $(wildcard $(EVAL_ENTRY) $(SIM_ENTRY)) $(wildcard baselines/*.py tests/*.py models/*.py training/*.py)
+	$(PY) -m compileall -q $(wildcard *.py baselines/*.py tests/*.py models/*.py training/*.py)
 
 # clean: 임시 산출물만 지운다. 커밋된 eval-dev 는 건드리지 않는다 (distclean 참조).
 # data/eval-dev 는 저장소에 커밋된 공식 평가셋이고 ATTRIBUTION.md 가 그 안에 있다.

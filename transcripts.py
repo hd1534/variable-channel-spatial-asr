@@ -19,6 +19,7 @@ exported list of the segments still missing.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
@@ -64,24 +65,47 @@ class SegmentCache:
     """Append-only JSONL ``{"key", "backend", "text"}``; one file per backend."""
 
     def __init__(self, path: str | Path, backend: str) -> None:
+        """Read a single-backend cache, recovering only an interrupted final append."""
         self.path = Path(path)
         self.backend = backend
         self.text: dict[str, str] = {}
         if self.path.is_file():
-            for line in self.path.read_text(encoding="utf-8").splitlines():
+            payload = self.path.read_bytes()
+            offset = 0
+            for line in payload.splitlines(keepends=True):
                 if line.strip():
-                    row = json.loads(line)
+                    try:
+                        row = json.loads(line)
+                    except (json.JSONDecodeError, UnicodeDecodeError):
+                        if line.endswith(b"\n") or offset + len(line) != len(payload):
+                            raise
+                        with self.path.open("r+b") as handle:
+                            handle.truncate(offset)
+                        break
                     if row["backend"] != backend:
                         raise ValueError(f"{self.path} holds {row['backend']!r} transcripts, not {backend!r}")
+                    if not isinstance(row["key"], str) or not isinstance(row["text"], str):
+                        raise ValueError(f"{self.path}: expected string key and text")
                     self.text[row["key"]] = row["text"]
+                offset += len(line)
 
     def __contains__(self, key: str) -> bool:
+        """Whether this segment already has a transcript, including empty text."""
         return key in self.text
 
     def add(self, key: str, text: str) -> None:
+        """Durably append a transcript using one writer per cache file."""
+        if not isinstance(text, str):
+            raise ValueError("transcript must be a string")
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.path, "a", encoding="utf-8") as fh:
-            fh.write(json.dumps({"key": key, "backend": self.backend, "text": text}, ensure_ascii=False) + "\n")
+        with self.path.open("ab+") as fh:
+            if fh.tell():
+                fh.seek(-1, os.SEEK_END)
+                if fh.read(1) != b"\n":
+                    fh.write(b"\n")
+            fh.write((json.dumps({"key": key, "backend": self.backend, "text": text}, ensure_ascii=False) + "\n").encode())
+            fh.flush()
+            os.fsync(fh.fileno())
         self.text[key] = text
 
 
@@ -118,12 +142,13 @@ def transcribe_missing(segments: Iterable[Segment], cache: SegmentCache, backend
     return done
 
 
-def export_missing(segments: Iterable[Segment], cache: SegmentCache, path: str | Path) -> int:
-    """Write the segments the cache lacks as JSONL, for a backend that runs elsewhere."""
+def export_missing(segments: Iterable[Segment], cache: SegmentCache, path: str | Path,
+                   *, include_cached: bool = False) -> int:
+    """Export unique requests, optionally including cached segments for input validation."""
     seen: set[str] = set()
     rows = []
     for seg in segments:
-        if seg.key in cache or seg.key in seen:
+        if (not include_cached and seg.key in cache) or seg.key in seen:
             continue
         seen.add(seg.key)
         rows.append({"key": seg.key, "session_id": seg.session_id, "channel": seg.channel,

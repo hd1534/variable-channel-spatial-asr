@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Score a diarizing ASR (Track B reference row) on the two-talker eval set.
 
-A diarizing ASR -- VibeVoice-ASR here, Qwen-Audio-3.1-ASR through its API would
-fit the same format -- reads one channel of the whole 20 s session and returns
+A diarizing ASR reads one channel of the whole 20 s session and returns
 ``[{"start_time", "end_time", "speaker_id", "text"}]``.  It neither uses space
 nor runs causally, so it is reported as a reference (``observation_mode =
 "full_audio"``, outside the official causal table) and its numbers do not move
@@ -119,7 +118,9 @@ def frame_slots(segments: Sequence[Mapping[str, Any]], slots: Mapping[Any, int])
     return filled
 
 
-def case_records(case_id: str, segments: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+def case_records(case_id: str, segments: Sequence[Mapping[str, Any]],
+                 final_transcripts: Mapping[str, str] | None = None) -> list[dict[str, Any]]:
+    """Convert native regions and optional common-ASR text to full-audio records."""
     segments = clean_segments(segments)
     slots = keep_speakers(segments) if segments else {}
     frames = frame_slots(segments, slots) if segments else [0] * spec.N_GRID_POINTS
@@ -129,12 +130,17 @@ def case_records(case_id: str, segments: Sequence[Mapping[str, Any]]) -> list[di
     for seg in sorted(segments, key=lambda s: s["start_time"]):
         if seg["text"]:
             texts.setdefault(spec.speaker_slot(slots[seg["speaker_id"]]), []).append(seg["text"])
+    transcripts = {k: " ".join(v) for k, v in texts.items()} if final_transcripts is None else dict(final_transcripts)
+    if any(key not in {spec.speaker_slot(i) for i in range(CAP)} or not isinstance(value, str)
+           for key, value in transcripts.items()):
+        raise ValueError("invalid cap-2 final_transcripts")
     records.append({"record_type": spec.RECORD_TYPE_FINAL_TRANSCRIPTS, "case_id": case_id,
-                    "final_transcripts": {k: " ".join(v) for k, v in texts.items()}, "observation_mode": MODE})
+                    "final_transcripts": transcripts, "observation_mode": MODE})
     return records
 
 
 def score(records: list[dict[str, Any]], gt_rows: list[str]) -> dict[str, Any]:
+    """Use the authoritative scorer with separate full-audio aggregation."""
     with tempfile.TemporaryDirectory() as tmp:
         p, g = Path(tmp) / "p.jsonl", Path(tmp) / "g.jsonl"
         p.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in records), encoding="utf-8")
@@ -142,27 +148,47 @@ def score(records: list[dict[str, Any]], gt_rows: list[str]) -> dict[str, Any]:
         return evaluate.evaluate_files(p, g, TRACK)["scopes"][MODE]
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--segments", required=True, help="JSONL written by notebooks/track_b_vibevoice.ipynb")
-    parser.add_argument("--sets", nargs="+", default=["eval-t2", "eval-t2-static"])
-    parser.add_argument("--out", required=True)
-    args = parser.parse_args(argv)
+def score_segments(segments_path: Path, data_root: Path, sets: Sequence[str], out: Path,
+                   *, limit: int = 0) -> dict[str, Any]:
+    """Score mono results on paired cases, labelling M as the comparison condition.
 
-    raw: dict[tuple[str, str, int], list[dict[str, Any]]] = {}
-    backend = None
-    for line in Path(args.segments).read_text(encoding="utf-8").splitlines():
+    ``by_M`` is retained for existing consumers; it groups the proposed case's
+    available microphones, never the number the mono baseline actually used.
+    """
+    raw: dict[tuple[str, str, int], dict[str, Any]] = {}
+    backends: set[str | None] = set()
+    contracts: set[str] = set()
+    runtimes: set[str] = set()
+    for line in segments_path.read_text(encoding="utf-8").splitlines():
         if line.strip():
             row = json.loads(line)
-            raw[(row["set"], row["session_id"], int(row["channel"]))] = row["segments"]
-            backend = row.get("backend", backend)
-    out = Path(args.out)
+            key = (row["set"], row["session_id"], int(row["channel"]))
+            if key in raw:
+                raise ValueError(f"duplicate mono result: {key}")
+            raw[key] = row
+            backends.add(row.get("backend"))
+            contract = row.get("contract")
+            identity = {k: v for k, v in contract.items() if k not in ("audio_sha256", "channel")} if contract else None
+            contracts.add(json.dumps(identity, sort_keys=True))
+            runtimes.add(json.dumps(row.get("runtime"), sort_keys=True))
+    if len(backends) != 1:
+        raise ValueError("expected results from exactly one baseline backend")
+    if len(contracts) != 1 or len(runtimes) != 1:
+        raise ValueError("inconsistent inference contracts or runtimes in mono results")
     out.mkdir(parents=True, exist_ok=True)
-    summary: dict[str, Any] = {"backend": backend, "observation_mode": MODE}
-    for set_name in args.sets:
-        set_dir = REPO / "data" / set_name
+    summary: dict[str, Any] = {"backend": next(iter(backends)), "observation_mode": MODE, "input_channels": 1,
+                               "inference_contract": json.loads(next(iter(contracts))),
+                               "runtime": json.loads(next(iter(runtimes))),
+                               "grouping": "M is the paired proposed condition; baseline input is always 1ch"}
+    for set_name in sets:
+        set_dir = data_root / set_name
         meta = {json.loads(l)["case_id"]: json.loads(l) for l in (set_dir / "meta.jsonl").read_text().splitlines() if l}
         gt_lines = [l for l in (set_dir / "ground_truth.jsonl").read_text(encoding="utf-8").splitlines() if l]
+        if limit:
+            sessions = list(dict.fromkeys(json.loads(line)["session_id"] for line in gt_lines))[:limit]
+            gt_lines = [line for line in gt_lines if json.loads(line)["session_id"] in sessions]
+        if not gt_lines:
+            raise ValueError(f"{set_name}: no ground-truth cases selected")
         records, missing, by_M = [], [], {}
         for line in gt_lines:
             row = json.loads(line)
@@ -171,7 +197,7 @@ def main(argv: list[str] | None = None) -> int:
             if key not in raw:
                 missing.append(key)
                 continue
-            recs = case_records(row["case_id"], raw[key])
+            recs = case_records(row["case_id"], raw[key]["segments"], raw[key].get("final_transcripts"))
             records.extend(recs)
             by_M.setdefault(str(len(m["active_channels"])), ([], []))
             by_M[str(len(m["active_channels"]))][0].extend(recs)
@@ -182,10 +208,26 @@ def main(argv: list[str] | None = None) -> int:
             "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in records), encoding="utf-8")
         summary[set_name] = {"all": score(records, gt_lines)["metrics"],
                              "by_M": {M: score(r, g)["metrics"] for M, (r, g) in sorted(by_M.items())}}
+        summary[set_name]["by_comparison_M"] = summary[set_name]["by_M"]
         cells = " | ".join(f"M={M} acc {v[evaluate.METRIC_SPEAKER_ACC]:.3f} cpWER {v['cpwer']:.3f}"
                            for M, v in sorted(summary[set_name]["by_M"].items(), reverse=True))
-        print(f"[{set_name}] {cells}")
+        print(f"[{set_name}] mono input=1ch, paired comparison: {cells}")
     (out / "score.json").write_text(json.dumps(summary, indent=1, ensure_ascii=False), encoding="utf-8")
+    return summary
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Score existing legacy or modern diarizing-ASR segment files."""
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("--segments", type=Path, required=True)
+    parser.add_argument("--sets", nargs="+", default=["eval-t2", "eval-t2-static"])
+    parser.add_argument("--data-root", type=Path, default=REPO / "data")
+    parser.add_argument("--limit", type=int, default=0)
+    parser.add_argument("--out", type=Path, required=True)
+    args = parser.parse_args(argv)
+    if args.limit < 0:
+        parser.error("--limit must be nonnegative")
+    score_segments(args.segments, args.data_root, args.sets, args.out, limit=args.limit)
     return 0
 
 

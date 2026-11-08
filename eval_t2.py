@@ -36,6 +36,7 @@ import hashlib
 import json
 import math
 import os
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -48,6 +49,7 @@ import numpy as np  # noqa: E402
 import evaluate  # noqa: E402
 import spec  # noqa: E402
 import transcripts as tr  # noqa: E402
+from modern_asr import QWEN_BACKEND, cache_path, canonical_asr  # noqa: E402
 from models.slots import best_assignment_accuracy, online_slots, theta_grid, tune_theta  # noqa: E402
 from training.config import VAL_PROTOCOL_VERSION, config_fingerprint, load_config, load_config_dict  # noqa: E402
 from training.official import timepoint_records, track_for  # noqa: E402
@@ -360,13 +362,13 @@ def slots_for(emb: dict[str, np.ndarray], key: str, fuse_with: str | None, M: np
 
 def asr_backend_id(name: str) -> str:
     """Resolve a local ASR alias or preserve an external cache backend ID."""
-    return LOCAL_ASR.get(name, name)
+    return canonical_asr(LOCAL_ASR.get(name, name))
 
 
 def asr_cache(args: argparse.Namespace) -> tuple[tr.SegmentCache, Any]:
     """Open the requested backend's transcript cache and optional local recognizer."""
     backend_id = asr_backend_id(args.asr)
-    path = Path(args.asr_cache) / f"{backend_id.replace('/', '__')}.jsonl"
+    path = cache_path(args.asr_cache, backend_id)
     backend = None
     if args.asr in LOCAL_ASR:
         from baselines import FrozenASR
@@ -376,7 +378,9 @@ def asr_cache(args: argparse.Namespace) -> tuple[tr.SegmentCache, Any]:
 
 
 def run_variant(set_name: str, set_dir: Path, out_dir: Path, emb: dict[str, np.ndarray], slots: np.ndarray,
-                cache: tr.SegmentCache, backend: Any, info: dict[str, Any]) -> dict[str, Any] | None:
+                cache: tr.SegmentCache, backend: Any, info: dict[str, Any],
+                asr_python: str | None = None, asr_device: str = "cuda") -> dict[str, Any] | None:
+    """Score one variant, optionally filling Qwen requests in an isolated process."""
     out_dir.mkdir(parents=True, exist_ok=True)
     segments = {cid: tr.case_segments(set_name, cid, sid, int(ref), s.tolist())
                 for cid, sid, ref, s in zip(emb["case_id"], emb["session_id"], emb["ref"], slots)}
@@ -386,12 +390,28 @@ def run_variant(set_name: str, set_dir: Path, out_dir: Path, emb: dict[str, np.n
                                   lambda sid: read_session(set_dir, sid))
         print(f"  transcribed {n} new segments ({cache.backend})", flush=True)
     else:
+        if cache.backend == QWEN_BACKEND and asr_python:
+            requests = out_dir / "asr_requests.jsonl"
+            tr.export_missing(flat, cache, requests, include_cached=True)
+            import torch
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            subprocess.run([asr_python, str(REPO / "modern_asr.py"), "--device", asr_device,
+                            "--data-root", str(set_dir.parent), "transcribe", "--requests", str(requests),
+                            "--cache-dir", str(cache.path.parent)], check=True,
+                           env={**os.environ, "HF_HUB_OFFLINE": "0", "TRANSFORMERS_OFFLINE": "0"})
+            refreshed = tr.SegmentCache(cache.path, cache.backend)
+            cache.text = refreshed.text
         missing = tr.export_missing(flat, cache, out_dir / "missing_segments.jsonl")
         if missing:
             print(f"  {missing} segments are not in the {cache.backend} cache: "
                   f"{out_dir / 'missing_segments.jsonl'} lists them; transcribe them and rerun", flush=True)
             return None
     records: list[dict[str, Any]] = []
+    runtime_path = cache.path.parent / "qwen-runtime.json"
+    if cache.backend == QWEN_BACKEND and runtime_path.exists():
+        info["asr_runtime"] = json.loads(runtime_path.read_text(encoding="utf-8"))
     for cid, s in zip(emb["case_id"], slots):
         records.extend(timepoint_records(str(cid), s.tolist(), TRACK))
         records.append(tr.transcript_record(str(cid), tr.final_transcripts(segments[cid], cache)))
@@ -487,6 +507,7 @@ def table_line(report: dict[str, Any]) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run frozen attribution checkpoints and a selected transcript backend."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     src = parser.add_mutually_exclusive_group(required=True)
     src.add_argument("--run-dir", help="a train.py run directory (config.json, best.pt, summary.json)")
@@ -498,8 +519,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--variants", nargs="+", help="subset of the system's variants (default: all)")
     parser.add_argument("--out", required=True)
     parser.add_argument("--asr", default=DEFAULT_ASR,
-                        help="'wav2vec2' (run here) or the id of a backend whose cache another machine fills")
+                        help="wav2vec2, qwen3-1.7b, or an external transcript-cache backend ID")
     parser.add_argument("--asr-cache", default=str(REPO / "runs" / "asr_cache"))
+    parser.add_argument("--asr-python", help="isolated Qwen interpreter (setup_asr_env.py --profile qwen)")
+    parser.add_argument("--asr-device", default="cuda", help="device for the isolated Qwen worker")
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--model-cache", help="speechbrain savedir for the ECAPA checkpoint")
     parser.add_argument("--limit", type=int, default=0, help="first N sessions only (smoke runs)")
@@ -542,7 +565,8 @@ def main(argv: list[str] | None = None) -> int:
                     "n_cases": int(len(M)), "limit": args.limit,
                     "summary": {k: (summary or {}).get(k)
                                 for k in ("run", "config", "best_step", "fingerprint", "val_protocol_version")}}
-            report = run_variant(set_name, set_dir, Path(args.out) / set_name / variant, emb, slots, cache, backend, info)
+            report = run_variant(set_name, set_dir, Path(args.out) / set_name / variant, emb, slots, cache, backend, info,
+                                 args.asr_python, args.asr_device)
             if report is None:
                 return 2
             results[f"{set_name}/{variant}"] = report

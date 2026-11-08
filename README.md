@@ -181,10 +181,74 @@ make train TRAIN_CONFIG=configs/voice_only.json TRAIN_DATA=<LibriSpeech/ 를 담
 
 **Colab에서**: 노트북 맨 위 `CONFIG`만 바꿔 실행한다. 노트북은 다음을 처리한다.
 
-- Colab에 깔린 `torch`는 그대로 두고 `speechbrain`만 설치한다.
+- 학습 환경은 Colab의 `torch`를 사용하고 `speechbrain`을 설치한다. 최신 ASR은 별도 venv에서 실행한다.
 - LibriSpeech는 Drive에 캐시하고 매번 로컬 디스크에 풀며, OpenSLR md5와 대조한다.
 - 방 음향 뱅크는 Drive에 50개 방 단위로 미러링하므로 끊겨도 이어서 만든다.
 - 체크포인트와 요약은 Drive에 남긴다.
+
+### 최신 ASR와 단일채널 화자 구분 비교
+
+`notebooks/train_template.ipynb`의 기본 전사는 **Qwen3-ASR-1.7B**(`ASR="qwen3-1.7b"`)다.
+기존 baseline 3종과 proposed 3종 모두 같은 고정 전사 모델을 쓴다. Qwen 자체는 화자를 구분하지 않으며,
+각 시스템이 예측한 화자 슬롯의 연속 구간을 전사한다. `ASR="wav2vec2"`로 이전 전사를 재현할 수 있다.
+ASR 교체는 화자 모델을 재학습하지 않고 임베딩·체크포인트를 재사용해 전사와 점수만 갱신한다.
+기존에 기록한 wav2vec2 수치와 새 Qwen 수치는 백엔드를 명시해 구분한다.
+
+최신 단일채널 비교는 `notebooks/mono_baselines.ipynb`에서 다음 세 가지를 실행한다.
+
+| 비교군 | 화자 구분 | 전사 | 실제 입력 |
+|---|---|---|---|
+| Nemotron + Qwen | [NVIDIA Nemotron-3-Diarization](https://huggingface.co/nvidia/Nemotron-3-Diarization) | [Qwen3-ASR-1.7B](https://huggingface.co/Qwen/Qwen3-ASR-1.7B), 기존 시스템과 같은 slot-run 규칙 | 1ch |
+| VibeVoice | [Microsoft VibeVoice-ASR 9B](https://huggingface.co/microsoft/VibeVoice-ASR) | 모델 자체 전사 | 1ch |
+| MOSS | [OpenMOSS MOSS-Transcribe-Diarize 0.9B](https://github.com/OpenMOSS/MOSS-Transcribe-Diarize) | 모델 자체 전사 | 1ch |
+
+먼저 `LIMIT=2`로 GPU 추론·재개·채점을 확인한 뒤 `LIMIT=0`으로 전체 평가한다.
+VibeVoice 전용 기존 진입점 `notebooks/track_b_vibevoice.ipynb`도 같은 실행기를 사용한다.
+전체 비교군 실행에는 A100을 권장한다. VibeVoice는 가중치만 약 18GB이므로 T4용 설정이 아니다.
+공통 Qwen은 CUDA GPU 종류가 바뀌어도 전사 조건을 유지하도록 FP16을 사용한다. VibeVoice/MOSS는
+Ampere 이상에서 BF16을 선택한다. 실제 VRAM·속도와 모델 설치는 Colab에서 확인해야 한다.
+
+**비교 조건**: 같은 세션·같은 기준 마이크(활성 채널 중 최소 번호)를 사용한다. mono 비교군은
+20초 전체를 본 `full_audio` 결과이고, proposed의 화자 결정은 `causal`이다. 관측 범위를 표시해 별도 행으로 보고한다.
+Nemotron은 streaming도 지원하지만, 이번 기본 프리셋은 offline이다. `by_comparison_M`은 짝지은 proposed의
+마이크 수이며, mono 모델이 입력받은 마이크 수는 언제나 1이다. proposed의 1ch 결과도 함께 보고한다.
+모델이 화자 2명을 초과해 출력하면 발화 시간 상위 두 화자를 유지하고 나머지는 최장 화자에 합치는
+`top2-duration-fold-v1` 후처리를 적용한다. 정답·정답 화자 ID·정답 전사는 추론에 사용하지 않는다.
+최신 모델 대비 우위는 사전에 가정하지 않고 SpkAcc·cpWER 실측으로 판단한다.
+
+명령행에서는 학습 인터프리터를 바꾸지 않고 모델별 환경을 만든다. 아래는 Colab 경로 기준이다.
+
+```bash
+python3 setup_asr_env.py --profile qwen --root /content/vcsasr-envs
+python3 eval_t2.py --run-dir /content/drive/MyDrive/vcsasr/runs/proposed_carry \
+  --out /content/drive/MyDrive/vcsasr/eval/proposed_carry --device cuda \
+  --asr qwen3-1.7b --asr-python /content/vcsasr-envs/qwen/bin/python \
+  --asr-cache /content/drive/MyDrive/vcsasr/asr_cache
+
+python3 setup_asr_env.py --profile nemotron --root /content/vcsasr-envs
+python3 mono_baselines.py --backend nemotron --python /content/vcsasr-envs/nemotron/bin/python \
+  --qwen-python /content/vcsasr-envs/qwen/bin/python --limit 2 \
+  --out /content/drive/MyDrive/vcsasr/mono_baselines/nemotron \
+  --asr-cache /content/drive/MyDrive/vcsasr/asr_cache
+
+python3 compare_asr.py --eval-root /content/drive/MyDrive/vcsasr/eval \
+  --mono-root /content/drive/MyDrive/vcsasr/mono_baselines \
+  --out /content/drive/MyDrive/vcsasr/asr_comparison.json
+```
+
+VibeVoice/MOSS는 각각 같은 이름의 환경을 만든 뒤 `--backend`와 `--python`을 바꾼다.
+`--qwen-python`은 Nemotron에만 필요하다. 모델·공식 소스 revision은 `modern_asr.py`에 고정하고,
+출력에 오디오 SHA-256, 디코딩 설정, 실제 패키지 버전·정밀도·입력 채널·관측 범위를 기록한다.
+이들이 바뀌면 다른 출력/캐시 경로를 사용한다(노트북의 `RUN_TAG`, `ASR_CACHE_NAME`). 같은 파일에는 한 실행만 기록해야 한다.
+중단된 마지막 JSONL 조각은 복구하지만, 정상 줄의 손상과 파싱 실패는 중단시킨다.
+VibeVoice/MOSS의 파싱 오류나 토큰 상한에 도달한 출력을 완료로 캐시하지 않는다. 라이브러리 목록은 각 venv의
+`resolved-requirements.txt`와 mono 노트북의 Drive `mono_baselines/runtimes/`에 남는다.
+노트북의 가중치 캐시는 Drive `models/asr/`에 보존한다. CLI에서는 `VCSASR_MODEL_CACHE`로 같은 경로를 지정할 수 있다.
+비교 표의 case hash와 표본 수가 같아야 같은 평가 집단이다. 시험 실행과 전체 실행을 직접 비교하지 않는다.
+
+로컬에서는 단위·종단 테스트와 노트북 문법, 네 모델 환경의 실제 설치·import를 확인했다.
+Nemotron은 고정 체크포인트로 평가셋의 20초 오디오 한 개를 CPU에서 추론했다.
+Qwen/VibeVoice/MOSS의 실제 GPU 전사와 전체 평가 성능 비교는 Colab에서 확인해야 한다.
 
 `pyroomacoustics` 0.8.5는 Linux 설치 파일이 없다. 그래서 뱅크가 Drive에 없을 때만 Git 태그에서 빌드한다(이 맥에서 태그 빌드는 휠과 RIR이 비트 단위로 같았다). 학습 세션의 방 음향 적용(컨볼루션, 레벨, 클리핑 방지, 16비트 양자화)은 GPU에서 배치째 한다. CPU 작업자는 음성 디코딩과 발화 배치만 맡는다. 그래서 작업자 쪽 일이 세션당 0.25\~0.5초에서 10\~19 ms로 줄었다(이 맥, 화자 2\~4명). 같은 float32 입력이면 CPU 기준 구현(`training/scenes.render_numpy`)과 16비트 단위로 2 이하만 다르다(`tests/test_training.py`). 학습 입력은 float16으로 넘기므로 최대 15 단위(RMS 1 미만)까지 다르다. 처음에는 `smoke_real`로 설치, 혼합 정밀도, 메모리, 데이터 준비 시간 대 GPU 계산 시간을 확인한다.
 
@@ -421,6 +485,10 @@ Source: https://www.openslr.org/12
 | `LibriSpeech` (`train-clean-100`) | 화자 구분 시스템의 학습 음성 (학습 중에만 섞어 쓴다) | `CC BY 4.0` | 저장소에 포함하지 않는다 |
 | `pyroomacoustics` (v0.8.5) | 다채널 실내 임펄스 응답(ISM) 생성 | `MIT` | 라이브러리 코드 미재배포 |
 | `facebook/wav2vec2-base-960h` | 통제 베이스라인 1·2 및 제안 모델 동결 ASR 백엔드 | `Apache-2.0` | Hugging Face 런타임 로드 (가중치 미재배포) |
+| `Qwen/Qwen3-ASR-1.7B` | 본 평가 공통 전사 백엔드 | `Apache-2.0` | 별도 qwen-asr 환경, 가중치 미재배포 |
+| `nvidia/Nemotron-3-Diarization` | 최신 단일채널 화자 구분 비교군 | `OpenMDW-1.1` | 별도 Transformers 환경, 가중치 미재배포 |
+| `microsoft/VibeVoice-ASR` | 단일채널 전사·화자 구분 비교군 | `MIT` | 별도 VibeVoice 환경, 가중치 미재배포 |
+| `OpenMOSS-Team/MOSS-Transcribe-Diarize` | 단일채널 전사·화자 구분 비교군 | `Apache-2.0` | 별도 MOSS 환경, 가중치 미재배포 |
 | `speechbrain/spkrec-ecapa-voxceleb` | 목소리 단서용 동결 화자 임베딩 백엔드 (목소리 전용·단순 결합·제안 모델) | `Apache-2.0` | 가중치 미재배포. `speechbrain` 1.1.2(`Apache-2.0`)로 런타임 로드하며, `transformers`와 한 환경에서 쓴다 |
 | `snakers4/silero-vad` | 모듈형 파이프라인 음성 활동 검출 구성 요소 | `MIT` | 현재 통제 베이스라인은 내장 에너지 게이트 사용 |
 | `transformers` | 사전학습 음향 백엔드 로더 | `Apache-2.0` | - |
@@ -457,8 +525,15 @@ training/                    학습 코드: 설정(config.py), 음성 코퍼스(
                              손실(loss.py), 학습·검증 루프(engine.py), 공식 형식 예측·채점(official.py)
 configs/                     시스템별 설정 (smoke, smoke_real, voice_only, space_only, naive_fusion, proposed_carry, proposed_reset)
 train.py                     학습·검증 진입점 (--config / --data-root / --run-dir, 같은 run-dir 이면 이어서 학습)
+modern_asr.py                Qwen 전사 및 최신 화자 구분 모델의 별도 환경 추론 작업자
+mono_baselines.py            최신 단일채널 비교군의 재개·전사·채점 실행기
+setup_asr_env.py             모델별 독립 환경 설치와 패키지 목록 보존
+compare_asr.py               채널·관측 범위·평가 표본을 명시한 통합 비교표
+tests/test_modern_asr.py     모델 API 어댑터·캐시 무결성·합성 오디오 종단 평가 테스트
 notebooks/reproduce.ipynb    Baseline 2 추론·채점을 무료 CPU 런타임에서 재현하는 Colab 노트북
 notebooks/train_template.ipynb  화자 구분 시스템을 Colab GPU 에서 학습·검증하는 템플릿 노트북 (CONFIG 하나만 바꾼다)
+notebooks/mono_baselines.ipynb  최신 단일채널 비교군 3종의 Colab 추론·채점
+notebooks/track_b_vibevoice.ipynb  같은 실행기의 VibeVoice 전용 프리셋
 tools_make_demo_audio.py     웹페이지 6.2절 데모 오디오(단일 채널 · 정답 방위로 조향한 4채널)를 자르는 스크립트
 docs/index.html              GitHub Pages 배포용 벤치마크 웹페이지 (제출 HTML과 동일 본)
 requirements.txt             최소 채점용 및 전체 파이프라인용 의존성 명세
