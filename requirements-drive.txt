@@ -1,0 +1,7 @@
+# Optional personal-Drive storage, isolated from the ASR model environments.
+google-api-python-client==2.201.0
+# A range, not a pin: google-colab pins google-auth exactly, and the notebooks
+# install into the running kernel, so a pin would replace Colab's own copy.
+google-auth>=2.15,<3
+google-auth-httplib2==0.4.4
+google-auth-oauthlib==1.5.0

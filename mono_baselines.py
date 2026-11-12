@@ -128,6 +128,7 @@ def run(backend: str, python: str, qwen_python: str | None, data_root: Path, out
                           "contracts_sha256": fingerprint([job["contract"] for job in jobs])}
     report["runtime"] = json.loads(raw_path.with_suffix(".runtime.json").read_text())
     if backend == "nemotron":
+        report["baseline"]["asr_cache"] = cache_root.name
         report["qwen_runtime"] = json.loads((cache_root / "qwen-runtime.json").read_text())
     atomic_json(out / "score.json", report)
     return report

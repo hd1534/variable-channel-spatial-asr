@@ -243,8 +243,13 @@ def load_or_embed(cfg: Any, set_dir: Path, out_dir: Path, args: argparse.Namespa
     path = out_dir / "embeddings.npz"
     fp = inputs_fingerprint(cfg, set_dir, best, args.limit, args.components_from)
     if path.is_file():
-        data = dict(np.load(path, allow_pickle=False))
-        if str(data.pop("fingerprint")) == fp:
+        try:
+            with np.load(path, allow_pickle=False) as stored:
+                data = dict(stored)
+        except Exception:  # noqa: BLE001 - a truncated file (job killed mid-save) is a cache miss
+            print(f"  embeddings unreadable, recomputing: {path}")
+            data = {}
+        if str(data.pop("fingerprint", "")) == fp:
             print(f"  embeddings reused: {path}")
             return data
     if args.components_from:
@@ -252,7 +257,12 @@ def load_or_embed(cfg: Any, set_dir: Path, out_dir: Path, args: argparse.Namespa
     else:
         data = embed_set(cfg, set_dir, gt, meta, args.device, args.model_cache, best, args.limit)
     out_dir.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(path, fingerprint=np.asarray(fp), **data)
+    # Written under a temporary name: savez writes the zip directory last, so a
+    # kill or a backup snapshot mid-save would otherwise leave an unreadable file.
+    partial = path.with_name(path.name + ".part")
+    with open(partial, "wb") as fh:
+        np.savez_compressed(fh, fingerprint=np.asarray(fp), **data)
+    os.replace(partial, path)
     return data
 
 
@@ -446,10 +456,22 @@ def eval_is_complete(
     components_from: list[str] | None = None,
     limit: int = 0,
     asr: str = DEFAULT_ASR,
+    asr_cache: str | Path | None = None,
 ) -> bool:
-    """Whether embeddings and scores match the requested settings, validation summary and ASR backend."""
+    """Whether embeddings and scores match the requested settings, validation summary and ASR backend.
+
+    With ``asr_cache``, a score also has to come from that transcript cache
+    directory (by name) and, for Qwen, from the runtime recorded in it, so
+    switching caches re-scores every system instead of only the unfinished ones.
+    """
     if summary is None:
         return False
+    expected_source: dict[str, Any] = {}
+    if asr_cache is not None:
+        expected_source["asr_cache"] = Path(asr_cache).name
+        runtime_path = Path(asr_cache) / "qwen-runtime.json"
+        if asr_backend_id(asr) == QWEN_BACKEND and runtime_path.exists():
+            expected_source["asr_runtime"] = json.loads(runtime_path.read_text(encoding="utf-8"))
     out = Path(out_dir)
     name = cfg.model.name
     variants = list(variants or VARIANTS[name])
@@ -485,6 +507,7 @@ def eval_is_complete(
                 run_info.get("summary") != expected_summary_meta
                 or run_info.get("limit") != limit
                 or run_info.get("asr") != asr_backend_id(asr)
+                or any(run_info.get(k) != v for k, v in expected_source.items())
             ):
                 return False
             theta_exp, weight_exp = expected_settings[v]
@@ -562,6 +585,7 @@ def main(argv: list[str] | None = None) -> int:
             info = {"system": name, "config": cfg.name, "variant": variant, "set": set_name,
                     "thresholds": "eval set (optimistic)" if args.tune_on_eval else "validation",
                     "theta_by_M": theta, "weight_by_M": weight, "asr": cache.backend,
+                    "asr_cache": Path(args.asr_cache).name,
                     "n_cases": int(len(M)), "limit": args.limit,
                     "summary": {k: (summary or {}).get(k)
                                 for k in ("run", "config", "best_step", "fingerprint", "val_protocol_version")}}

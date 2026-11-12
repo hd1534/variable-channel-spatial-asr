@@ -106,6 +106,20 @@ class TestCacheContracts(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "invalid set/session"):
             modern.audio_path(Path("data"), "../secret", "session")
 
+    def test_upstream_parser_shapes_without_scoreable_content_are_dropped(self) -> None:
+        """Rows the official parsers emit for silence or zero-length spans cannot block a run."""
+        speech = {"start_time": 1.0, "end_time": 2.0, "speaker_id": 0, "text": "hello"}
+        kept = [speech, {**speech, "start_time": 3.0, "end_time": 4.0, "text": ""}]  # Nemotron: no words, a talker
+        dropped = [
+            {"start_time": 0.0, "end_time": 1.4, "text": "[Silence]"},  # VibeVoice: key absent, not None
+            {"text": "[Noise]"},
+            {"start_time": 5.0, "end_time": 6.0, "text": ""},
+            {"start_time": 3.2, "end_time": 3.2, "speaker_id": "S02", "text": "uh"},  # MOSS: end == start
+        ]
+        self.assertEqual(modern.normalize_segments(dropped + kept, 20), kept)
+        with self.assertRaises((ValueError, TypeError)):
+            modern.normalize_segments([{"start_time": 1.0, "end_time": 2.0, "text": "words, no talker"}], 20)
+
 
 class TestRuntimeProvisioning(unittest.TestCase):
     """Provisioning must isolate installs and only mark importable environments complete."""
@@ -464,6 +478,24 @@ class TestMonoIntegration(unittest.TestCase):
                 mono.run("moss", "worker", None, self.data, out, root / "cache", ["eval-t2"], "cpu", 2, 2048)
             updated = compare_asr.comparison_rows(root / "eval", root / "mono", self.data, ["eval-t2"])
             self.assertNotEqual(next(row["case_sha256"] for row in updated if row["system"] == "moss"), old_hash)
+
+    def test_comparison_marks_rows_whose_transcripts_come_from_different_caches(self) -> None:
+        """Rows re-scored under a new ASR_CACHE_NAME next to old ones are flagged, not merged silently."""
+        import compare_asr
+
+        def row(system: str, source: list[Any]) -> dict[str, Any]:
+            return {"set": "eval-t2", "system": system, "comparison_M": 4, "input_channels": 4,
+                    "observation_mode": "causal", "asr": modern.QWEN_BACKEND, "n_cases": 1, "case_sha256": "c" * 64,
+                    "asr_source": modern.fingerprint(source),
+                    "metrics": {"speaker_attribution_accuracy": 1.0, "cpwer": 0.0}}
+
+        same = [row("a", ["asr_cache", {"torch": "1"}]), row("b", ["asr_cache", {"torch": "1"}])]
+        with patch("builtins.print") as printed:
+            compare_asr.print_rows(same)
+        self.assertNotIn("differs", str(printed.call_args_list))
+        with patch("builtins.print") as printed:
+            compare_asr.print_rows(same + [row("c", ["asr_cache_v2", {"torch": "2"}])])
+        self.assertIn("differs", str(printed.call_args_list))
 
     def test_missing_duplicate_and_mixed_predictions_fail(self) -> None:
         """The scorer does not silently accept missing jobs or mixed backends."""

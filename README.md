@@ -179,12 +179,48 @@ make train TRAIN_CONFIG=configs/voice_only.json TRAIN_DATA=<LibriSpeech/ 를 담
 
 검증 프로토콜은 현재 `v3`이다. 학습·검증의 확산 잡음은 배포 평가셋과 같은 Hann overlap-add 정의를 사용하며, 기존 평가셋 파일은 그대로 쓴다. 이전 프로토콜의 요약과 점수는 재검증·재채점한다. 호환되는 이전 `best.pt`와 최신 체크포인트는 새 기준으로 각각 검증해 더 좋은 가중치를 보존하고, 학습 재개용 모델·옵티마이저·난수 상태는 유지한다. 평가 결과를 재사용할 때는 ASR 백엔드도 같아야 한다.
 
-**Colab에서**: 노트북 맨 위 `CONFIG`만 바꿔 실행한다. 노트북은 다음을 처리한다.
+**Colab에서**: 개인 Drive 인증을 한 번 준비한 뒤 노트북의 `CONFIG`를 선택한다. 저장소 기본값은 아래의 공식 Drive API 연결이다. 노트북은 다음을 처리한다.
 
 - 학습 환경은 Colab의 `torch`를 사용하고 `speechbrain`을 설치한다. 최신 ASR은 별도 venv에서 실행한다.
-- LibriSpeech는 Drive에 캐시하고 매번 로컬 디스크에 풀며, OpenSLR md5와 대조한다.
-- 방 음향 뱅크는 Drive에 50개 방 단위로 미러링하므로 끊겨도 이어서 만든다.
-- 체크포인트와 요약은 Drive에 남긴다.
+- LibriSpeech·RIR·체크포인트를 로컬 작업 경로에 기록하고 개인 Drive로 백업한다.
+- 재접속하면 마지막 완료 백업을 검증해 복원하고, 완성된 RIR 조각과 학습 체크포인트를 재사용한다.
+- 백업 실패는 명시적인 오류로 처리하며, 실패 후 새 학습을 계속 진행하지 않는다.
+
+### 학교 Pro+와 개인 계정 Drive 연결
+
+노트북의 기본 `STORAGE_BACKEND="drive_api"`는 **Google 공식 Python 라이브러리와 개인 OAuth 프로젝트**를 사용한다.
+학교 계정의 Pro+ 런타임에서 학습하고 개인 계정의 Drive에 백업한다. 별도 마운트나 rclone은 필요 없다.
+개인 계정에서 Colab과 Drive를 함께 사용하려면 `STORAGE_BACKEND="mounted_drive"`로 기존 마운트를 선택할 수 있다.
+
+처음 한 번 Google Cloud에서 Drive API와 **Desktop OAuth 클라이언트**를 만들고,
+다운로드한 JSON을 `runs/private/credentials.json`에 둔다. 그런 다음 Mac에서 실행한다.
+
+```bash
+python3 -m pip install -r requirements-drive.txt
+python3 setup_drive.py
+```
+
+개인 계정으로 로그인하면 전용 백업 폴더와 비공개 `runs/private/drive-auth.json`이 생성된다.
+이 JSON을 Colab 보안 비밀 **`DRIVE_AUTH`**에 넣고 노트북 접근을 허용한다.
+인증 정보는 채팅·코드 셀·출력·Git에 넣지 않는다. 상세한 콘솔 설정, 토큰 갱신, 계정 변경은
+[개인 Drive 설정 가이드](docs/personal-drive.md)를 따른다.
+
+학습은 로컬 `/content/vcsasr-store`에서 실행한다. 학습 결과·RIR·전사 캐시는 120초마다,
+대용량 `models/`·`cache/`는 명령 종료 시 백업한다. 전송은 재개 가능한 청크 업로드이며,
+Drive의 크기·MD5 확인 후 완료 기록을 게시한다. 복원 시 SHA-256도 확인한다.
+백업 오류는 작업에 전달하고, 명령·마지막 셀은 백업 완료까지 기다린다.
+**갑작스러운 VM 종료 시 마지막 완료 백업 이후 작업은 유실될 수 있다.**
+5TB Drive가 Colab VM의 로컬 디스크 용량을 늘려 주지는 않는다.
+
+백업은 변경 불가능한 `objects/`와 `commits/` 형식이다. 이전 원격 백업은 자동 삭제하지 않으므로
+장기간 실행하면 최신 결과 폴더보다 많은 저장 공간을 사용한다. 일반 폴더로 내보내려면 다음을 실행한다.
+
+```bash
+python3 drive_storage.py export --auth runs/private/drive-auth.json --out runs/exported-colab-results
+```
+
+같은 백업 폴더는 한 런타임에서만 사용한다. 이력이 분기하거나 다른 런타임의 변경을 감지하면
+자동 덮어쓰기를 중단하고 양쪽 이력을 보존한다. 학교 Drive의 파일은 자동 이동·삭제하지 않는다.
 
 ### 최신 ASR와 단일채널 화자 구분 비교
 
@@ -216,24 +252,24 @@ Nemotron은 streaming도 지원하지만, 이번 기본 프리셋은 offline이�
 `top2-duration-fold-v1` 후처리를 적용한다. 정답·정답 화자 ID·정답 전사는 추론에 사용하지 않는다.
 최신 모델 대비 우위는 사전에 가정하지 않고 SpkAcc·cpWER 실측으로 판단한다.
 
-명령행에서는 학습 인터프리터를 바꾸지 않고 모델별 환경을 만든다. 아래는 Colab 경로 기준이다.
+명령행에서는 학습 인터프리터를 바꾸지 않고 모델별 환경을 만든다. 아래는 Drive API 연결 셀에서 복원한 Colab 로컬 경로 기준이다. 노트북에서는 자동 백업되며, 명령만 따로 실행할 때에는 완료 후 `drive_storage.py backup --local /content/vcsasr-store --auth /content/.config/vcsasr/drive-auth.json`도 실행한다.
 
 ```bash
 python3 setup_asr_env.py --profile qwen --root /content/vcsasr-envs
-python3 eval_t2.py --run-dir /content/drive/MyDrive/vcsasr/runs/proposed_carry \
-  --out /content/drive/MyDrive/vcsasr/eval/proposed_carry --device cuda \
+python3 eval_t2.py --run-dir /content/vcsasr-store/runs/proposed_carry \
+  --out /content/vcsasr-store/eval/proposed_carry --device cuda \
   --asr qwen3-1.7b --asr-python /content/vcsasr-envs/qwen/bin/python \
-  --asr-cache /content/drive/MyDrive/vcsasr/asr_cache
+  --asr-cache /content/vcsasr-store/asr_cache
 
 python3 setup_asr_env.py --profile nemotron --root /content/vcsasr-envs
 python3 mono_baselines.py --backend nemotron --python /content/vcsasr-envs/nemotron/bin/python \
   --qwen-python /content/vcsasr-envs/qwen/bin/python --limit 2 \
-  --out /content/drive/MyDrive/vcsasr/mono_baselines/nemotron \
-  --asr-cache /content/drive/MyDrive/vcsasr/asr_cache
+  --out /content/vcsasr-store/mono_baselines/nemotron \
+  --asr-cache /content/vcsasr-store/asr_cache
 
-python3 compare_asr.py --eval-root /content/drive/MyDrive/vcsasr/eval \
-  --mono-root /content/drive/MyDrive/vcsasr/mono_baselines \
-  --out /content/drive/MyDrive/vcsasr/asr_comparison.json
+python3 compare_asr.py --eval-root /content/vcsasr-store/eval \
+  --mono-root /content/vcsasr-store/mono_baselines \
+  --out /content/vcsasr-store/asr_comparison.json
 ```
 
 VibeVoice/MOSS는 각각 같은 이름의 환경을 만든 뒤 `--backend`와 `--python`을 바꾼다.
@@ -525,6 +561,11 @@ training/                    학습 코드: 설정(config.py), 음성 코퍼스(
                              손실(loss.py), 학습·검증 루프(engine.py), 공식 형식 예측·채점(official.py)
 configs/                     시스템별 설정 (smoke, smoke_real, voice_only, space_only, naive_fusion, proposed_carry, proposed_reset)
 train.py                     학습·검증 진입점 (--config / --data-root / --run-dir, 같은 run-dir 이면 이어서 학습)
+drive_api.py                Google 공식 SDK의 인증·청크 전송·서버 체크섬 검증
+drive_storage.py            개인 Drive 백업·복원, SHA-256 검증, Colab 주기 백업 세션
+setup_drive.py              개인 Desktop OAuth 클라이언트로 한 번만 브라우저 인증
+requirements-drive.txt      선택적 Drive 공식 라이브러리 버전
+tests/test_drive_storage.py 전송 중단·손상·동시 실행·체크포인트/RIR 복원·공식 SDK 테스트
 modern_asr.py                Qwen 전사 및 최신 화자 구분 모델의 별도 환경 추론 작업자
 mono_baselines.py            최신 단일채널 비교군의 재개·전사·채점 실행기
 setup_asr_env.py             모델별 독립 환경 설치와 패키지 목록 보존

@@ -11,6 +11,7 @@ import tempfile
 import unittest
 from collections.abc import Iterator
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
@@ -239,36 +240,43 @@ class TestBestProtocolMigration(unittest.TestCase):
 class TestAsrCompletion(unittest.TestCase):
     """A score can be reused only for the requested transcript backend."""
 
+    cfg: Any = load_config_dict({"name": "space", "model": {"name": "space_only"}})
+    summary: dict[str, Any] = {
+        "run": "space", "config": cfg.name, "system": cfg.model.name, "best_step": None,
+        "fingerprint": config_fingerprint(cfg), "val_protocol_version": VAL_PROTOCOL_VERSION,
+        "theta_official_by_M": {"4": 0.5},
+    }
+
+    def _scored_eval(self, root: Path, asr: str) -> tuple[dict[str, Any], Path]:
+        """Write a one-case eval-t2 result (embeddings + score.json) and return its run info."""
+        dataset: Path = root / "data" / "eval-t2"
+        dataset.mkdir(parents=True)
+        (dataset / "manifest.json").write_text('{"official": false}')
+        output: Path = root / "eval" / "eval-t2"
+        (output / "full").mkdir(parents=True)
+        np.savez_compressed(
+            output / "embeddings.npz", fingerprint=eval_t2.inputs_fingerprint(self.cfg, dataset, None, 0),
+            case_id=np.array(["t2_0000__m1111"]), mask=np.array(["1111"]),
+            session_id=np.array(["t2_0000"]), ref=np.array([0]),
+            speech=np.ones((1, 80), dtype=bool), labels=np.zeros((1, 80), dtype=np.int64),
+            space=np.full((1, 80, 36), 1.0 / math.sqrt(36)),
+        )
+        info: dict[str, Any] = {
+            "summary": {key: self.summary.get(key) for key in
+                        ("run", "config", "best_step", "fingerprint", "val_protocol_version")},
+            "limit": 0, "theta_by_M": {"4": 0.5}, "weight_by_M": None,
+            "asr": asr,
+        }
+        score_path: Path = output / "full" / "score.json"
+        score_path.write_text(json.dumps({"eval_t2_run": info, "metrics": {"cpwer": 0.0}}))
+        return info, score_path
+
     def test_backend_aliases_match_and_other_or_missing_backends_invalidate_scores(self) -> None:
         """Exercise the notebook's default and explicitly selected external ASR IDs."""
-        cfg: Any = load_config_dict({"name": "space", "model": {"name": "space_only"}})
-        summary: dict[str, Any] = {
-            "run": "space", "config": cfg.name, "system": cfg.model.name, "best_step": None,
-            "fingerprint": config_fingerprint(cfg), "val_protocol_version": VAL_PROTOCOL_VERSION,
-            "theta_official_by_M": {"4": 0.5},
-        }
+        cfg, summary = self.cfg, self.summary
         with tempfile.TemporaryDirectory() as temporary:
             root: Path = Path(temporary)
-            dataset: Path = root / "data" / "eval-t2"
-            dataset.mkdir(parents=True)
-            (dataset / "manifest.json").write_text('{"official": false}')
-            output: Path = root / "eval" / "eval-t2"
-            (output / "full").mkdir(parents=True)
-            np.savez_compressed(
-                output / "embeddings.npz", fingerprint=eval_t2.inputs_fingerprint(cfg, dataset, None, 0),
-                case_id=np.array(["t2_0000__m1111"]), mask=np.array(["1111"]),
-                session_id=np.array(["t2_0000"]), ref=np.array([0]),
-                speech=np.ones((1, 80), dtype=bool), labels=np.zeros((1, 80), dtype=np.int64),
-                space=np.full((1, 80, 36), 1.0 / math.sqrt(36)),
-            )
-            info: dict[str, Any] = {
-                "summary": {key: summary.get(key) for key in
-                            ("run", "config", "best_step", "fingerprint", "val_protocol_version")},
-                "limit": 0, "theta_by_M": {"4": 0.5}, "weight_by_M": None,
-                "asr": "external-asr",
-            }
-            score_path: Path = output / "full" / "score.json"
-            score_path.write_text(json.dumps({"eval_t2_run": info, "metrics": {"cpwer": 0.0}}))
+            info, score_path = self._scored_eval(root, "external-asr")
             with patch.object(eval_t2, "REPO", root):
                 arguments: dict[str, Any] = {"sets": ("eval-t2",), "variants": ("full",)}
                 self.assertFalse(eval_t2.eval_is_complete(root / "eval", cfg, summary, **arguments))
@@ -282,6 +290,58 @@ class TestAsrCompletion(unittest.TestCase):
                 info.pop("asr")
                 score_path.write_text(json.dumps({"eval_t2_run": info, "metrics": {"cpwer": 0.0}}))
                 self.assertFalse(eval_t2.eval_is_complete(root / "eval", cfg, summary, **arguments))
+
+    def test_switching_the_transcript_cache_or_its_qwen_runtime_invalidates_scores(self) -> None:
+        """A new ASR_CACHE_NAME re-scores finished systems too, so rows never mix transcript sources."""
+        cfg, summary = self.cfg, self.summary
+        qwen: str = eval_t2.asr_backend_id("qwen3-1.7b")
+        with tempfile.TemporaryDirectory() as temporary:
+            root: Path = Path(temporary)
+            info, score_path = self._scored_eval(root, qwen)
+            cache: Path = root / "asr_cache"
+            cache.mkdir()
+            (cache / "qwen-runtime.json").write_text(json.dumps({"packages": {"torch": "old"}}))
+            arguments: dict[str, Any] = {"sets": ("eval-t2",), "variants": ("full",), "asr": "qwen3-1.7b"}
+            with patch.object(eval_t2, "REPO", root):
+                self.assertTrue(eval_t2.eval_is_complete(root / "eval", cfg, summary, **arguments))
+                self.assertFalse(eval_t2.eval_is_complete(root / "eval", cfg, summary, asr_cache=cache, **arguments))
+                info.update(asr_cache="asr_cache", asr_runtime={"packages": {"torch": "old"}})
+                score_path.write_text(json.dumps({"eval_t2_run": info, "metrics": {"cpwer": 0.0}}))
+                self.assertTrue(eval_t2.eval_is_complete(root / "eval", cfg, summary, asr_cache=cache, **arguments))
+                self.assertFalse(eval_t2.eval_is_complete(
+                    root / "eval", cfg, summary, asr_cache=root / "asr_cache_v2", **arguments))
+                (cache / "qwen-runtime.json").write_text(json.dumps({"packages": {"torch": "new"}}))
+                self.assertFalse(eval_t2.eval_is_complete(root / "eval", cfg, summary, asr_cache=cache, **arguments))
+
+    def test_truncated_embeddings_are_recomputed_and_replaced_atomically(self) -> None:
+        """A job killed while saving embeddings.npz cannot make every later run crash."""
+        with tempfile.TemporaryDirectory() as temporary:
+            set_dir, out_dir = Path(temporary) / "eval-t2", Path(temporary) / "out"
+            set_dir.mkdir()
+            (set_dir / "manifest.json").write_text('{"official": false}')
+            out_dir.mkdir()
+            (out_dir / "embeddings.npz").write_bytes(b"PK\x03\x04 truncated")
+            args = SimpleNamespace(limit=0, components_from=None, device="cpu", model_cache=None)
+            fresh = {"case_id": np.array(["t2_0000__m1111"])}
+            with patch.object(eval_t2, "embed_set", return_value=fresh) as embed:
+                data = eval_t2.load_or_embed(self.cfg, set_dir, out_dir, args, None, [], {})
+                embed.assert_called_once()
+                self.assertEqual(data["case_id"].tolist(), ["t2_0000__m1111"])
+                self.assertEqual(sorted(p.name for p in out_dir.iterdir()), ["embeddings.npz"])
+                eval_t2.load_or_embed(self.cfg, set_dir, out_dir, args, None, [], {})
+                embed.assert_called_once()  # the rewritten file is a valid cache hit
+
+                def torn_save(target: Any, **arrays: Any) -> None:
+                    """Die halfway through writing, as a SIGTERM during savez does."""
+                    (target if hasattr(target, "write") else open(target, "wb")).write(b"PK\x03\x04 partial")
+                    raise OSError("killed mid-save")
+
+                (set_dir / "manifest.json").write_text('{"official": true}')  # new inputs: recompute
+                with patch.object(eval_t2.np, "savez_compressed", side_effect=torn_save), \
+                        self.assertRaises(OSError):
+                    eval_t2.load_or_embed(self.cfg, set_dir, out_dir, args, None, [], {})
+            with np.load(out_dir / "embeddings.npz", allow_pickle=False) as kept:  # previous result intact
+                self.assertEqual(kept["case_id"].tolist(), ["t2_0000__m1111"])
 
 
 if __name__ == "__main__":

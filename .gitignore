@@ -33,11 +33,20 @@ __pycache__/
 *.pyc
 *.pyo
 .venv/
+.venv-drive/
 venv/
 *.egg-info/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+
+# Personal Drive authentication stays in Colab Secrets or private local files.
+rclone.conf
+*.rclone.conf
+token.json
+credentials.json
+client_secret*.json
+*drive-auth.json
 
 # --- editors / OS -----------------------------------------------------------
 .DS_Store

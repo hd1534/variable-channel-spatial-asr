@@ -212,15 +212,18 @@ def normalize_segments(rows: Sequence[Mapping[str, Any]], duration: float) -> li
     """Validate native output strictly; empty speech output remains scoreable.
 
     Small timestamp overshoots are clipped to the recording. Malformed outputs
-    fail instead of becoming successful empty cache entries.
+    fail instead of becoming successful empty cache entries. Segments that carry
+    nothing to score are dropped, as the upstream parsers emit them: VibeVoice
+    leaves out the speaker (and sometimes the times) of ``[Silence]``-type
+    segments, and MOSS accepts zero-length segments (``end == start``).
     """
     result: list[dict[str, Any]] = []
     for row in rows:
-        speaker, text = row["speaker_id"], row.get("text", "")
-        if isinstance(text, str) and text.strip() and not re.sub(r"\[[^\]]*\]", " ", text).strip():
-            continue  # explicit non-speech annotations do not require a speaker or timestamps
-        start, end = float(row["start_time"]), float(row["end_time"])
-        if (not math.isfinite(start) or not math.isfinite(end) or end <= start
+        speaker, text = row.get("speaker_id"), row.get("text", "")
+        if isinstance(text, str) and not re.sub(r"\[[^\]]*\]", " ", text).strip() and (text.strip() or speaker is None):
+            continue  # non-speech annotations, or an empty segment without a talker
+        start, end = float(row.get("start_time")), float(row.get("end_time"))
+        if (not math.isfinite(start) or not math.isfinite(end) or end < start
                 or not isinstance(speaker, (str, int)) or isinstance(speaker, bool)
                 or not isinstance(text, str)):
             raise ValueError(f"invalid diarization segment: {row!r}")
@@ -313,7 +316,6 @@ class DiarizingModel:
 
 def fill_requests(requests: Sequence[Path], data_root: Path, cache_root: Path, device: str) -> int:
     """Fill exported segment requests, checking audio provenance before reuse."""
-    ensure_runtime(cache_root / "qwen-runtime.json", runtime_contract("qwen", device))
     cache = SegmentCache(cache_path(cache_root, QWEN_BACKEND), QWEN_BACKEND)
     contract_path = cache.path.with_suffix(".inputs.json")
     inputs: dict[str, str] = json.loads(contract_path.read_text()) if contract_path.exists() else {}
@@ -344,6 +346,11 @@ def fill_requests(requests: Sequence[Path], data_root: Path, cache_root: Path, d
             jobs[row["key"]] = {**row, "start_sec": lo, "end_sec": hi, "source": source}
     atomic_json(contract_path, inputs)
     pending = [row for key, row in jobs.items() if key not in cache]
+    runtime_path = cache_root / "qwen-runtime.json"
+    if pending or not runtime_path.exists():
+        # Checked only before transcripts are added: cached ones keep the runtime
+        # recorded with them, so a Colab image update cannot block re-scoring.
+        ensure_runtime(runtime_path, runtime_contract("qwen", device))
     if not pending:
         print("Qwen cache complete", flush=True)
         return 0

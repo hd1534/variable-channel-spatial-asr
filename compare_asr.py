@@ -46,6 +46,7 @@ def comparison_rows(eval_root: Path, mono_root: Path, data_root: Path,
                 rows.append({"set": set_name, "system": f"{path.parents[2].name}/{path.parent.name}",
                              "comparison_M": int(m), "input_channels": actual_channels,
                              "observation_mode": "causal", "asr": info["asr"],
+                             "asr_source": fingerprint([info.get("asr_cache"), info.get("asr_runtime")]),
                              "n_cases": len(groups[m]), "case_sha256": fingerprint(groups[m]),
                              "metrics": entry["metrics"]})
         for path in sorted(mono_root.glob("*/score.json")):
@@ -54,10 +55,13 @@ def comparison_rows(eval_root: Path, mono_root: Path, data_root: Path,
                 continue
             groups = case_groups(path.parent / f"{set_name}.predictions.jsonl", metadata)
             baseline = report["baseline"]
+            # Nemotron transcribes through the shared Qwen cache; native ASR rows carry their own runtime.
+            source = ([baseline.get("asr_cache"), report.get("qwen_runtime")] if "qwen_runtime" in report
+                      else [None, report.get("runtime")])
             for m, metrics in report[set_name]["by_comparison_M"].items():
                 rows.append({"set": set_name, "system": baseline.get("run", baseline["name"]), "comparison_M": int(m),
                              "input_channels": 1, "observation_mode": baseline["observation_mode"],
-                             "asr": baseline["asr"], "n_cases": len(groups[m]),
+                             "asr": baseline["asr"], "asr_source": fingerprint(source), "n_cases": len(groups[m]),
                              "case_sha256": fingerprint(groups[m]), "metrics": metrics})
     return rows
 
@@ -65,14 +69,18 @@ def comparison_rows(eval_root: Path, mono_root: Path, data_root: Path,
 def print_rows(rows: Sequence[dict[str, Any]]) -> None:
     """Print a comparison with matching case populations explicitly identified."""
     populations: dict[tuple[str, int], set[str]] = {}
+    sources: dict[str, set[str]] = {}
     for row in rows:
         populations.setdefault((row["set"], row["comparison_M"]), set()).add(row["case_sha256"])
+        sources.setdefault(row["asr"], set()).add(row["asr_source"])
     print("M = proposed comparison condition; input = actual microphones used. No automatic ranking.")
     print(f"{'set/M':<20} {'system':<46} {'input':>5} {'scope':<10} {'ASR':<25} {'cases':>5} {'SpkAcc':>8} {'cpWER':>8} population")
     for row in sorted(rows, key=lambda r: (r["set"], r["comparison_M"], r["observation_mode"], r["system"])):
         population = row["case_sha256"][:8]
         if len(populations[(row["set"], row["comparison_M"])]) > 1:
             population += " (different subsets present)"
+        if len(sources[row["asr"]]) > 1:  # same backend, different transcript cache or runtime
+            population += f" (ASR source {row['asr_source'][:8]} differs across rows)"
         metrics = row["metrics"]
         condition = f"{row['set']}/M{row['comparison_M']}"
         asr = row["asr"].split("/")[-1].split("@")[0]
