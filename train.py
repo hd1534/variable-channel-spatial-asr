@@ -10,8 +10,11 @@ Usage::
 ``--data-root`` holds ``LibriSpeech/<subset>/`` and the room banks
 (``rirbanks/``, built on first use).  Rerunning the same command on the same
 ``--run-dir`` resumes from the newest intact checkpoint listed in
-``ckpt/LATEST.json``.  ``--set section.key=value`` overrides
-one config field (the value is parsed as JSON when it parses, else taken as a
+``ckpt/LATEST.json``; a resume with another ``train.max_steps`` recomputes
+the learning-rate schedule for the new total, which the summary records under
+``schedule_segments``.  Only one ``train.py`` may use a run directory at a
+time (``<run-dir>/.train.lock``).  ``--set section.key=value`` overrides one
+config field (the value is parsed as JSON when it parses, else taken as a
 string), e.g. ``--set train.max_steps=200 --set model.state=reset``.
 
 The last lines printed are a summary block meant to be pasted back as is.
@@ -29,10 +32,11 @@ if __package__ in (None, "") and str(Path(__file__).resolve().parent) not in sys
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from training.config import load_config  # noqa: E402
+from training.runlock import exclusive_lock  # noqa: E402
 
 SUMMARY_KEYS = (
-    "run", "config", "system", "state", "voice_encoder", "trained_steps", "best_step", "train_speakers", "val_speakers",
-    "val_sessions", "val_rooms", "overrides", "val_protocol_version", "commits", "gpu", "gpu_max_mem_gb", "amp_dtype", "bank_engine_version",
+    "run", "config", "system", "state", "voice_encoder", "trained_steps", "schedule_segments", "best_step",
+    "train_speakers", "val_speakers", "val_sessions", "val_rooms", "overrides", "val_protocol_version", "commits", "gpu", "gpu_max_mem_gb", "amp_dtype", "bank_engine_version",
     "wall_sec", "synthetic_data", "theta_by_M", "theta_official_by_M", "theta_learned", "fusion_weight_by_M",
     "spk_acc", "spk_acc_n2_cap2", "spk_acc_n2_cap2_by_M", "official_n2", "spk_acc_by_M", "spk_acc_by_N", "spk_acc_after_change_by_M",
     "spk_acc_steady_by_M", "centroid_acc_by_M", "position_acc_by_M", "causal_ceiling_by_N", "gate_by_M",
@@ -53,6 +57,13 @@ def _parse_set(items: list[str]) -> dict[str, object]:
     return out
 
 
+def busy_message(run_dir: str) -> str:
+    """What a second ``train.py`` on the same run directory is told before it stops."""
+    return (f"another train.py (pid {{pid}}) is already using {run_dir}; it can outlive a crashed notebook kernel. "
+            "Wait for it to finish, or stop it (`kill {pid}`, or Runtime > Disconnect and delete runtime on "
+            "Colab), then run again.")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--config", required=True, help="configs/<name>.json")
@@ -66,7 +77,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="index the corpora, build the room banks, fetch the voice encoder, then stop")
     parser.add_argument("--bank-mirror", help="second copy of the room banks that outlives the machine (Drive)")
     parser.add_argument("--allow-code-change", action="store_true",
-                        help="resume a checkpoint written by another commit (both commits are recorded)")
+                        help="resume training from a checkpoint written by another commit (both commits are "
+                             "recorded); a finished run is re-validated and re-reported on new code without it")
     parser.add_argument("--check-banks", action="store_true",
                         help="exit 3 if pyroomacoustics is needed to build a room bank this config reads "
                              "(missing locally and in --bank-mirror), else 0")
@@ -86,13 +98,16 @@ def main(argv: list[str] | None = None) -> int:
     from training.engine import Run  # torch is imported here, after argument errors
 
     started = time.time()
-    run = Run(cfg, args.run_dir, args.data_root, device=args.device, workers=args.workers, model_cache=args.model_cache,
-              bank_mirror=args.bank_mirror, allow_code_change=args.allow_code_change, overrides=overrides)
-    if args.prepare_only:
-        print(f"prepared: train bank {run.train_bank}, val bank {run.val_bank}", flush=True)
-        return 0
-    run.fit()
-    summary = run.finalize(started)
+    # --prepare-only also writes the run directory (config.json), so it takes the lock too
+    with exclusive_lock(Path(args.run_dir) / ".train.lock", busy_message(args.run_dir)):
+        run = Run(cfg, args.run_dir, args.data_root, device=args.device, workers=args.workers,
+                  model_cache=args.model_cache, bank_mirror=args.bank_mirror,
+                  allow_code_change=args.allow_code_change, overrides=overrides)
+        if args.prepare_only:
+            print(f"prepared: train bank {run.train_bank}, val bank {run.val_bank}", flush=True)
+            return 0
+        run.fit()
+        summary = run.finalize(started)
     block = {k: summary.get(k) for k in SUMMARY_KEYS if summary.get(k) is not None}
     print("===== VC-SASR RUN SUMMARY (paste this back) =====")
     print(json.dumps(block, ensure_ascii=False))

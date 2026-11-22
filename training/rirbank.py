@@ -292,6 +292,36 @@ def _engine_version(engine: str) -> str | None:
     return pyroomacoustics.__version__
 
 
+def _recorded_version(*folders: Path | None) -> str | None:
+    """The ``engine_version`` the first ``bank.json`` in ``folders`` that records one holds."""
+    for folder in folders:
+        if folder is None or not (folder / "bank.json").is_file():
+            continue
+        version = json.loads((folder / "bank.json").read_text(encoding="utf-8")).get("engine_version")
+        if version is not None:
+            return version
+    return None
+
+
+def _build_version(bank: BankSpec, out: Path, far: Path | None, n_todo: int) -> str | None:
+    """The simulator version the ``n_todo`` missing shards will be built with.
+
+    Raises :class:`ImportError` before anything is written when pyroomacoustics
+    is needed but cannot be imported, so a version already recorded in
+    ``bank.json`` is never replaced by an unknown one.
+    """
+    version = _engine_version(bank.engine)
+    if version is None and bank.engine == "pyroomacoustics":
+        recorded = _recorded_version(out, far)
+        pin = f"=={recorded}" if recorded else ""
+        raise ImportError(
+            f"{n_todo} shard(s) of {out} still need pyroomacoustics, which cannot be imported here"
+            + (f" (the finished shards were built with {recorded})" if recorded else "")
+            + f"; install pyroomacoustics{pin} and run again"
+        )
+    return version
+
+
 def _check_bank_version(src_dir: Path, bank: BankSpec, version: str | None) -> None:
     meta_path = src_dir / "bank.json"
     if not meta_path.is_file():
@@ -340,7 +370,7 @@ def build_bank(bank: BankSpec, root: str | Path, workers: int = 0, log=print, mi
             )
 
     if todo:
-        version = _engine_version(bank.engine)
+        version = _build_version(bank, out, far, len(todo))
         if in_out or (out / "bank.json").is_file():
             _check_bank_version(out, bank, version)
         if far is not None and (in_far or (far / "bank.json").is_file()):
@@ -357,12 +387,12 @@ def build_bank(bank: BankSpec, root: str | Path, workers: int = 0, log=print, mi
     previous = out / "bank.json"
 
     if todo:
-        version = _engine_version(bank.engine)
+        version = _build_version(bank, out, far, len(todo))
         if in_out or previous.is_file():
             _check_bank_version(out, bank, version)
         if far is not None and (in_far or (far / "bank.json").is_file()):
             _check_bank_version(far, bank, version)
-        info["engine_version"] = version
+        info["engine_version"] = version if version is not None else _recorded_version(out, far)
         previous.write_text(json.dumps(info), encoding="utf-8")
         if far is not None:
             far.mkdir(parents=True, exist_ok=True)

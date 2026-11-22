@@ -32,7 +32,7 @@
 | 사전 측정 평가셋 `data/eval-dev` | 배포 — `pyroomacoustics` + `LibriSpeech` 기반 144세션(864케이스), `official: true` |
 | 본 평가셋 `data/eval-t2`, `data/eval-t2-static` | 배포 — `LibriSpeech` `test-clean` 기반 200세션(조건마다 1200케이스), 주 조건·정지 조건 두 벌, `official: true` |
 | 통제 베이스라인 1·2 (무학습 추론) | 실측 완료 — `results/baseline1.json`, `results/baseline2.json` (동결 ASR `wav2vec2-base-960h`) |
-| `make test` | **통과** — `spec.py` 포함 8개 파일의 doctest 및 `tests/` 단위 테스트 171개 (`torch`가 있으면 학습 코드 테스트 `tests/test_training.py` 54개가 더해진다) |
+| `make test` | **통과** — `spec.py` 포함 10개 파일의 doctest 및 `tests/` 단위 테스트 전체 (`torch`가 없으면 학습 코드 테스트는 건너뛴다) |
 | `make selftest` | **통과** — `simulate` 불변식 및 베이스라인 1·2 종단 점검 |
 | `make smoke` | **통과** — 합성 데이터로 생성 → 추론 → 채점 전 경로 점검 (`runs/smoke` 안에서만) |
 | 본 평가셋 생성기 `make_eval_t2.py` | 완료 — `test-clean` 화자 40명, 200세션(1200케이스), 주 조건과 같은 세션의 정지 조건 두 벌. 정답을 예측으로 넣으면 공식 채점기가 두 벌 모두 `Spk Acc` 1.0, `cpWER` 0을 낸다 |
@@ -96,7 +96,7 @@ cd vcsasr
 
 # 1) 채점과 단위 테스트만 할 경우 (최소 의존성, 대형 모델·네트워크 불필요)
 python3 -m pip install numpy==2.2.4
-make test              # spec.py 포함 8개 파일 doctest + tests/ 단위 테스트 171개
+make test              # spec.py 포함 10개 파일 doctest + tests/ 단위 테스트
 
 # 2) 베이스라인 추론까지 할 경우 (전체 의존성)
 python3 -m pip install -r requirements.txt
@@ -147,7 +147,7 @@ make eval-dev-check    # data/eval-dev-rebuild 의 오디오·정답·메타를 
   - 확산 잡음(SNR 0\~20 dB)을 넣는다.
   - 화자 순서는 무작위다(같은 화자가 연달아 말할 수 있다). 엄격히 번갈아 말하면 "쉰 뒤에는 다른 사람"이라는 지름길이 생긴다.
   - 절반은 평가셋 꼴(2명, 가까운 쪽과 먼 쪽, 2\~13초 턴 2\~4개), 절반은 짧은 턴이 많은 꼴(2\~4명)이다.
-- **검증 세트**: 본 평가셋과 같은 조건(2명, 가까운 쪽과 먼 쪽, 긴 턴, 턴마다 위치 사본, 확산 잡음 SNR 5·10·20 dB)을 검증 화자로 만든 200세션이다. 임계값·가중치와 최고 체크포인트(마이크 2개 이상 케이스의 평균)를 이 세트로 정한다. 정지·무잡음 조건을 주 조건으로 삼지 않은 이유는 그 조건에서 학습 없는 단순 결합이 이미 causal 상한에 1점 안쪽으로 붙어(상한 0.949, 단순 결합 0.938\~0.948, 목소리 전용 0.87, 200세션 실측) 학습의 이득을 잴 여지가 없기 때문이다. 제안 모델의 최종 보고에는 같은 세션을 바꾼 조건을 진단으로 덧붙인다. 진단은 모두 같은 세션끼리 짝지어 본다(`summary.json`의 `diagnostics`).
+- **검증 세트**: 본 평가셋과 같은 조건(2명, 가까운 쪽과 먼 쪽, 긴 턴, 턴마다 위치 사본, 확산 잡음 SNR 5·10·20 dB)을 검증 화자로 만든 200세션이다. 임계값·가중치와 최고 체크포인트를 이 세트로 정한다. 최고 체크포인트의 선택 점수는 2인 검증 케이스를 슬롯 2개로 묶고 마이크 수별 공식 임계값으로 잰 `Spk Acc`(`spk_acc_n2_cap2_by_M`)를 M = 2, 3, 4마다 구한 뒤 세 값을 같은 비중으로 평균한 값이다. 마스크 `1100`·`1010`이 모두 M = 2이므로 마이크 2개 이상 케이스 전체의 평균과는 다르다. 정지·무잡음 조건을 주 조건으로 삼지 않은 이유는 그 조건에서 학습 없는 단순 결합이 이미 causal 상한에 1점 안쪽으로 붙어(상한 0.949, 단순 결합 0.938\~0.948, 목소리 전용 0.87, 200세션 실측) 학습의 이득을 잴 여지가 없기 때문이다. 제안 모델의 최종 보고에는 같은 세션을 바꾼 조건을 진단으로 덧붙인다. 진단은 모두 같은 세션끼리 짝지어 본다(`summary.json`의 `diagnostics`).
   - 정지·무잡음 조건 (본 평가셋의 정지 조건과 같은 꼴, 임계값은 이 조건에서 다시 정한다)
   - 모든 화자를 한 위치에 겹친 조건: 공간 경로만으로는 우연 수준이어야 하고, 전체 모델이 목소리 전용 아래로 떨어지면 안 된다.
   - 목소리 전용 대비 이득
@@ -175,7 +175,7 @@ make train TRAIN_CONFIG=configs/voice_only.json TRAIN_DATA=<LibriSpeech/ 를 담
   - 턴 수와 교대 횟수
   - 교대 직후 1초와 턴 안쪽의 정확도
 
-같은 명령을 같은 실행 디렉터리로 다시 돌리면 크기와 해시가 맞는 가장 최근 체크포인트에서 이어 간다. 업로드가 덜 된 파일이면 그 이전 체크포인트로 돌아간다. 설정이 바뀌었으면 이어 가지 않는다. 코드 커밋이 바뀌었을 때도 `--allow-code-change` 없이는 이어 가지 않으며, 쓴 커밋은 모두 기록된다.
+같은 명령을 같은 실행 디렉터리로 다시 돌리면 크기와 해시가 맞는 가장 최근 체크포인트에서 이어 간다. 업로드가 덜 된 파일이면 그 이전 체크포인트로 돌아간다. 설정이 바뀌었으면 이어 가지 않는다. 코드 커밋이 바뀌었을 때도 `--allow-code-change` 없이는 더 학습하지 않는다. 목표 걸음 수(`max_steps`)까지 끝난 실행은 더 학습할 것이 없으므로 플래그 없이도 새 코드로 다시 검증하고 요약을 쓴다. 쓴 커밋은 모두 기록된다. `max_steps`는 설정 지문에 들어가지 않아 늘려서 이어 갈 수 있지만, 그러면 cosine 학습률 일정을 새 총 걸음 수로 다시 계산해 학습률이 다시 올라가므로 처음부터 그 길이로 학습한 것과 같지 않다. 그래서 체크포인트와 `summary.json`의 `schedule_segments`에 지금까지 쓴 일정(시작 걸음, `max_steps`)을 모두 남긴다. 이 기록이 생기기 전 코드로 쓴 체크포인트에는 이력이 없다. 그런 체크포인트에서 이어 가면 `metrics.jsonl`에 남은 학습률로 일정을 다시 세우고, 다시 세운 구간에는 `"inferred": true`를 붙인다. 각 구간의 `max_steps`는 기록된 학습률에서 거꾸로 구하고, 일정이 바뀐 걸음은 앞선 `final` 기록이나 이전 일정이 끝난 걸음으로 정한다. 기록 간격 안으로만 좁혀지면 `start_step`은 가능한 가장 이른 걸음, `start_step_max`는 가장 늦은 걸음이다. 기록이 걸음 1부터 남아 있지 않으면 첫 구간의 `start_step`은 `null`이다. `metrics.jsonl`이 없거나 쓸 수 없으면 체크포인트의 마지막 학습률로 아는 마지막 일정 하나만 `"start_step": null`로 적는다. 그 앞에 다른 일정이 있었는지 알 수 없다는 뜻이다. warm-up이 끝나기 전의 체크포인트는 어느 `max_steps`든 학습률이 같으므로 일정 하나로 정확히 적는다.
 
 검증 프로토콜은 현재 `v3`이다. 학습·검증의 확산 잡음은 배포 평가셋과 같은 Hann overlap-add 정의를 사용하며, 기존 평가셋 파일은 그대로 쓴다. 이전 프로토콜의 요약과 점수는 재검증·재채점한다. 호환되는 이전 `best.pt`와 최신 체크포인트는 새 기준으로 각각 검증해 더 좋은 가중치를 보존하고, 학습 재개용 모델·옵티마이저·난수 상태는 유지한다. 평가 결과를 재사용할 때는 ASR 백엔드도 같아야 한다.
 
@@ -184,7 +184,8 @@ make train TRAIN_CONFIG=configs/voice_only.json TRAIN_DATA=<LibriSpeech/ 를 담
 - 학습 환경은 Colab의 `torch`를 사용하고 `speechbrain`을 설치한다. 최신 ASR은 별도 venv에서 실행한다.
 - LibriSpeech·RIR·체크포인트를 로컬 작업 경로에 기록하고 개인 Drive로 백업한다.
 - 재접속하면 마지막 완료 백업을 검증해 복원하고, 완성된 RIR 조각과 학습 체크포인트를 재사용한다.
-- 백업 실패는 명시적인 오류로 처리하며, 실패 후 새 학습을 계속 진행하지 않는다.
+- 백업 실패는 명시적인 오류로 처리하며, 실패 후 새 학습을 계속 진행하지 않는다. 연결 셀이 실패해 백업 세션이 없으면 이후 명령도 백업 없이 실행하지 않고 오류로 멈춘다.
+- `OVERRIDES`로 `train.max_steps`를 바꾸면 제안 모델의 실행 이름에 `-steps<N>`을 붙인다(`runs/proposed_carry-steps2000/`). 짧은 시간 측정용 실행이 본 학습과 같은 실행 디렉터리를 쓰지 않는다. 무학습 비교군의 이름은 바뀌지 않는다.
 
 ### 학교 Pro+와 개인 계정 Drive 연결
 
@@ -208,25 +209,87 @@ python3 setup_drive.py
 학습은 로컬 `/content/vcsasr-store`에서 실행한다. 학습 결과·RIR·전사 캐시는 120초마다,
 대용량 `models/`·`cache/`는 명령 종료 시 백업한다. 전송은 재개 가능한 청크 업로드이며,
 Drive의 크기·MD5 확인 후 완료 기록을 게시한다. 복원 시 SHA-256도 확인한다.
+복원이 중간에 끊기면 다시 실행할 때 이미 받은 파일은 다시 받지 않고 이어 간다. 그 사이 다른 런타임이 백업했어도 같다.
 백업 오류는 작업에 전달하고, 명령·마지막 셀은 백업 완료까지 기다린다.
+완료 표시는 마지막 셀의 `개인 Drive 최종 백업 완료` 줄이다. 그 앞의 로그에는 새로 올린 파일이 있으면
+`[storage] backup complete: N files (commit …)`, 없으면 `[storage] backup up to date`가 나온다.
 **갑작스러운 VM 종료 시 마지막 완료 백업 이후 작업은 유실될 수 있다.**
 5TB Drive가 Colab VM의 로컬 디스크 용량을 늘려 주지는 않는다.
+
+여러 런타임이 같은 백업 폴더를 동시에 써도 된다. 런타임마다 자기 백업 이력을 이어 가고,
+다음 동기화 때 다른 런타임의 이력과 합친다. 동기화는 연결 셀과 노트북 명령이 시작할 때마다 한다.
+합치기는 git의 recursive merge처럼 두 이력씩 실제 공통 조상을 기준으로 한다. 그래서 공통 조상 이후 한 런타임만 바꾼
+실행·평가 폴더(`runs/<실행>`, `eval/<이름>`, `mono_baselines/<실행>`, `rirbanks/<뱅크>` 등)는 런타임이 몇 개이든,
+앞서 몇 번 합쳤든 언제나 그 런타임의 버전을 쓴다. 공통 조상 이후 두 런타임이 모두 바꾼 폴더만 충돌이다.
+충돌하면 더 나중에 쓴 버전을 쓰고(백업이 폴더마다 기록한 시각으로 비교하며, 바꾼 버전은 늘 바꾸기 전 버전보다 늦다),
+다른 버전은 백업 이력에 남긴다.
+로그 `[storage] <폴더> changed in two runtimes`에 적힌 다른 버전의 커밋 ID를 아래 `export --commit`에 주면
+그 버전을 꺼낼 수 있다. 한 런타임이 지운 폴더를 다른 런타임이 지운 버전보다 나중에 바꿨다면 바꾼 버전을 남기고,
+그렇지 않으면 지운 상태를 따른다(어느 쪽이든 로그에 남는다).
+ASR 전사 캐시 폴더(`ASR_CACHE_NAME`, 기본 `asr_cache/`)는 `<백엔드>.jsonl`, `<백엔드>.inputs.json`, `qwen-runtime.json`을
+한 단위로 합친다. 두 런타임이 기록한 실행 계약(`qwen-runtime.json`)이 같고 `<백엔드>.inputs.json`에서 세션 오디오 해시가
+어긋나지 않으면 전사와 출처 기록을 합친다. 그렇지 않으면 섞지 않고, 파일을 더 늦게 쓴 쪽의 폴더 전체를 쓰고 충돌을
+로그에 남긴다(다른 버전은 백업 이력에 남는다). 그래도 같은 설정을 두 런타임에서 동시에 학습하지는 않는다.
+GPU 시간을 두 번 쓰고, 한쪽 결과는 최신 버전에서 빠진다.
+
+**이전 코드에서 올릴 때**: 위 동작은 모든 런타임이 새 코드를 돌릴 때만 성립한다. 이전 커밋(`9123e53`)으로 시작한 런타임은
+이전 저장 코드를 그대로 돌리므로, 다른 런타임이 백업을 올리면 다음 주기 백업에서 `remote advanced in another runtime`
+오류로 작업을 멈춘다. 새 코드의 연결 셀은 연결하자마자 백업을 올린다. 그래서 새 코드로 두 번째 런타임을 연결하기 전에
+이전 코드로 돌고 있는 런타임을 모두 멈추거나 새 코드로 다시 실행한다.
+
+노트북의 `RESTORE_SKIP`은 복원·동기화 때 VM으로 내려받지 않을 경로 접두어 목록이다.
+건너뛴 파일은 그 런타임에 받지 않을 뿐 백업에는 그대로 남는다. 기본값은 노트북마다 다르다.
+
+- `train_template.ipynb`: mono 비교군 전용 가중치(Nemotron, VibeVoice, MOSS, VibeVoice 토크나이저 `Qwen/Qwen2.5-7B`)
+- `mono_baselines.ipynb`: `cache`, `rirbanks`, `runs`, `models/ecapa`, wav2vec2 가중치
+- `track_b_vibevoice.ipynb`: `mono_baselines.ipynb`의 기본값과 Nemotron·MOSS·Qwen3-ASR-1.7B 가중치
+
+가중치 경로는 `drive_storage.model_cache_dirs`가 `models/asr/`와 `models/huggingface/` 아래 모델 폴더로 만든다.
+
+학교 Drive의 파일은 자동으로 옮기거나 지우지 않는다. 가져오지 않으면 첫 `drive_api` 실행은 빈 백업에서 시작하므로
+모든 시스템을 처음부터 학습하고 RIR 뱅크와 LibriSpeech 캐시도 새로 만든다. 학교 Drive의 기존 결과를 한 번 가져오려면
+학교 계정 Colab에서 학습 노트북의 `IMPORT_FROM`에 학교 Drive 경로(예: `/content/drive/MyDrive/vcsasr`)를 넣고 실행한다.
+연결 셀이 학교 Drive를 마운트하고, 백업에 아직 없는 폴더(`runs/<실행>`, `eval/<이름>`, `rirbanks/<뱅크>`,
+`cache/` 파일 등)만 복사해 백업한다. 백업에 이미 있는 폴더는 덮어쓰거나 섞지 않는다. 단, ASR 전사 캐시 폴더는
+위 합치기 규칙대로 합치고, 실행 계약이나 세션 오디오 해시가 다르면 백업의 캐시를 그대로 둔다.
+Mac에서는 학교 결과의 사본을 다음처럼 가져온다. `--local`에는 이 백업에 쓸 새 빈 폴더를 준다.
+
+```bash
+python3 drive_storage.py import --auth runs/private/drive-auth.json \
+  --from <학교 vcsasr 폴더 사본> --local runs/import-workspace
+```
+
+`IMPORT_FROM`과 `import`는 원본 폴더(합치기 단위)마다 한 백업에 한 번만 가져오고, 가져온 폴더를 백업에 기록한다.
+그래서 `IMPORT_FROM`을 그대로 두고 다시 실행해도, 가져온 뒤 이름을 바꾸거나 지운 폴더(예: `eval/<실행>-<ASR>`로 옮긴
+이전 `eval/<실행>`)를 다시 들여오지 않는다. 폴더마다 임시 영역에 통째로 복사한 뒤 다 복사됐을 때만 제자리로 옮기므로,
+가져오기가 중간에 끊기면 다시 실행하면 된다. 원본에 올라가지 못한 체크포인트를 가리키는 `ckpt/LATEST.json` 항목과 끊긴 마지막 JSONL 줄은
+학습 재개·JSONL 판독기처럼 빼고 가져온다. 가져온 폴더는 백업 커밋에 들어간 뒤에 가져온 것으로 기록한다. 백업이 받지 않는
+파일(예: 잘린 JSON)은 빼고 나머지를 백업하며 `[storage] imported <폴더>; left out of the backup because incomplete: <파일>`로
+알린다. 폴더의 어떤 파일도 백업에 들어가지 못했다면 `[storage] imported <폴더> is not in the backup yet ...`로 알리고
+다른 VM에서 다시 가져온다.
 
 백업은 변경 불가능한 `objects/`와 `commits/` 형식이다. 이전 원격 백업은 자동 삭제하지 않으므로
 장기간 실행하면 최신 결과 폴더보다 많은 저장 공간을 사용한다. 일반 폴더로 내보내려면 다음을 실행한다.
 
 ```bash
-python3 drive_storage.py export --auth runs/private/drive-auth.json --out runs/exported-colab-results
+python3 drive_storage.py export --auth runs/private/drive-auth.json --out runs/exported-colab-results \
+  --skip models --skip cache
 ```
 
-같은 백업 폴더는 한 런타임에서만 사용한다. 이력이 분기하거나 다른 런타임의 변경을 감지하면
-자동 덮어쓰기를 중단하고 양쪽 이력을 보존한다. 학교 Drive의 파일은 자동 이동·삭제하지 않는다.
+export는 백업을 읽기만 하고 게시하지 않는다. 같은 폴더로 다시 실행하면 그 폴더를 최신 백업에 맞게 갱신하고,
+로컬에서 고친 파일은 덮어쓰지 않고 경고만 남긴다. `--commit <ID>`는 합친 최신본 대신 로그에 나온 한 커밋을 내보낸다.
+`--skip <접두어>`는 그 경로를 받지 않으며(전에 받아 둔 파일은 그대로 둔다) 여러 번 쓸 수 있다. `--skip`은 그 export 실행에만 적용되므로,
+`--skip` 없이 다시 실행하면 전에 건너뛴 경로도 받는다. `models/`(mono 비교군 가중치까지 약 24 GB)와
+`cache/`(LibriSpeech 압축 파일 약 6.7 GB)까지 받으면 전체 내보내기가 매우 커지므로, 결과만 볼 때에는 위처럼 건너뛴다.
 
 ### 최신 ASR와 단일채널 화자 구분 비교
 
-`notebooks/train_template.ipynb`의 기본 전사는 **Qwen3-ASR-1.7B**(`ASR="qwen3-1.7b"`)다.
+`notebooks/train_template.ipynb`의 기본값은 `ASR="all"`이다. 시스템마다 **Qwen3-ASR-1.7B**(`qwen3-1.7b`)와
+이전 전사 백엔드인 `wav2vec2`로 각각 전사·채점하고, 결과를 `eval/<RUN_NAME>-qwen3-1.7b/`와
+`eval/<RUN_NAME>-wav2vec2/`에 따로 둔다. 화자 임베딩은 시스템마다 한 번만 계산해 두 폴더가 함께 쓴다.
+하나만 돌리려면 `ASR="qwen3-1.7b"` 또는 `ASR="wav2vec2"`를 고른다.
 기존 baseline 3종과 proposed 3종 모두 같은 고정 전사 모델을 쓴다. Qwen 자체는 화자를 구분하지 않으며,
-각 시스템이 예측한 화자 슬롯의 연속 구간을 전사한다. `ASR="wav2vec2"`로 이전 전사를 재현할 수 있다.
+각 시스템이 예측한 화자 슬롯의 연속 구간을 전사한다.
 ASR 교체는 화자 모델을 재학습하지 않고 임베딩·체크포인트를 재사용해 전사와 점수만 갱신한다.
 기존에 기록한 wav2vec2 수치와 새 Qwen 수치는 백엔드를 명시해 구분한다.
 
@@ -252,12 +315,12 @@ Nemotron은 streaming도 지원하지만, 이번 기본 프리셋은 offline이�
 `top2-duration-fold-v1` 후처리를 적용한다. 정답·정답 화자 ID·정답 전사는 추론에 사용하지 않는다.
 최신 모델 대비 우위는 사전에 가정하지 않고 SpkAcc·cpWER 실측으로 판단한다.
 
-명령행에서는 학습 인터프리터를 바꾸지 않고 모델별 환경을 만든다. 아래는 Drive API 연결 셀에서 복원한 Colab 로컬 경로 기준이다. 노트북에서는 자동 백업되며, 명령만 따로 실행할 때에는 완료 후 `drive_storage.py backup --local /content/vcsasr-store --auth /content/.config/vcsasr/drive-auth.json`도 실행한다.
+명령행에서는 학습 인터프리터를 바꾸지 않고 모델별 환경을 만든다. 아래는 Drive API 연결 셀에서 복원한 Colab 로컬 경로 기준이다. 노트북 세션이 연결되어 있으면 Colab 터미널에서 실행한 명령이 쓴 결과 파일도 120초마다 주기 백업에 들어간다. 바로 백업하거나 `models/`·`cache/`까지 백업하려면 노트북 셀에서 `storage.flush()`를 실행한다. 노트북 세션이 `LOCAL_STORE_ROOT`를 쓰는 동안 CLI `drive_storage.py backup`은 거부된다.
 
 ```bash
 python3 setup_asr_env.py --profile qwen --root /content/vcsasr-envs
 python3 eval_t2.py --run-dir /content/vcsasr-store/runs/proposed_carry \
-  --out /content/vcsasr-store/eval/proposed_carry --device cuda \
+  --out /content/vcsasr-store/eval/proposed_carry-qwen3-1.7b --device cuda \
   --asr qwen3-1.7b --asr-python /content/vcsasr-envs/qwen/bin/python \
   --asr-cache /content/vcsasr-store/asr_cache
 
@@ -490,8 +553,8 @@ make eval-t2-check    # 다시 만든 두 벌을 data/eval-t2, data/eval-t2-stat
 
 | 조건 | 목소리 전용 | 공간 전용 (M = 2 / 3 / 4) | 단순 결합 (M = 2 / 3 / 4) |
 |---|---|---|---|
-| 주 조건 | 0.833 | 0.803 / 0.853 / 0.878 | 0.833 / 0.860 / 0.878 |
-| 정지 조건 | 0.891\~0.894 | 0.935 / 0.951 / 0.963 | 0.935 / 0.954 / 0.964 |
+| 주 조건 | 0.833 | 0.803 / 0.853 / 0.878 | 0.833 / 0.859 / 0.878 |
+| 정지 조건 | 0.891\~0.894 | 0.935 / 0.950 / 0.963 | 0.935 / 0.954 / 0.964 |
 
 정지 조건에서는 학습 없는 공간 단서만으로 마이크 3개부터 오라클 값을 넘고, 2개에서도 1.3점 차이라 학습한 결합이 이길 여지가 없다. 주 조건에서는 단순 결합이 오라클보다 7\~12점 낮다. 그래서 주 조건을 본 평가로 쓰고, 정지 조건은 같은 세션의 이상적인 경우로 함께 보고한다. 마이크 2개 조건에서 두 화자의 도달 시간차가 1샘플 미만인 세션은 마스크 `1010`에서 14%, `1100`에서 22.5%다.
 
@@ -550,22 +613,29 @@ data/eval-dev/               사전 측정 평가셋 (오디오·정답·메타�
 data/eval-t2/                본 평가셋(2인) 주 조건: 턴마다 위치 이동 + 확산 잡음 (구성은 eval-dev 와 같다)
 data/eval-t2-static/         본 평가셋(2인) 정지 조건: 같은 세션, 첫 위치·무잡음
 results/                     통제 베이스라인 1·2의 공식 채점 결과 (baseline1.json, baseline2.json)
-tests/test_evaluate.py       평가 계약 및 채점기 단위 테스트 모음 (153개 테스트)
+tests/test_evaluate.py       평가 계약 및 채점기 단위 테스트 모음 (163개 테스트)
 tests/test_baselines.py      베이스라인 대표점 규칙 단위 테스트 (11개 테스트)
 tests/test_eval_t2.py        본 평가셋 생성기 테스트 (가짜 음성, 7개 테스트)
 tests/test_training.py       학습 코드 불변식 테스트 (torch 필요, 없으면 건너뛴다)
+tests/test_training_fixes.py 새 코드로 끝난 실행 재검증, 학습률 일정 기록, 뱅크 버전 보존, 실행 디렉터리 잠금 회귀 테스트
+tests/test_review_regressions.py  학습·평가 잡음 일치, best.pt 프로토콜 이전, ASR별 평가 결과 재사용 회귀 테스트
 models/                      화자 구분 시스템: voice_only · space_only · naive_fusion · proposed(TAC + ECAPA + GRU),
                              공용 특징(common.py), TAC 블록(tac.py), 공용 온라인 슬롯 매칭(slots.py)
 training/                    학습 코드: 설정(config.py), 음성 코퍼스(corpus.py), 방 음향 뱅크(rirbank.py),
                              교대 발화 세션 합성(scenes.py), GPU 위 방 음향 적용(render.py), 학습·검증 데이터(data.py),
-                             손실(loss.py), 학습·검증 루프(engine.py), 공식 형식 예측·채점(official.py)
-configs/                     시스템별 설정 (smoke, smoke_real, voice_only, space_only, naive_fusion, proposed_carry, proposed_reset)
+                             손실(loss.py), 학습·검증 루프(engine.py), 공식 형식 예측·채점(official.py),
+                             실행 디렉터리 하나에 한 프로세스만 쓰게 하는 잠금(runlock.py)
+configs/                     시스템별 설정 (smoke, smoke_real, voice_only, space_only, naive_fusion, proposed_carry, proposed_reset, proposed_carry_nodrop)
 train.py                     학습·검증 진입점 (--config / --data-root / --run-dir, 같은 run-dir 이면 이어서 학습)
+eval_t2.py                   한 시스템을 본 평가셋 두 벌(eval-t2, eval-t2-static)에 추론·전사·채점하는 진입점
+transcripts.py               예측 화자 슬롯 구간을 동결 ASR로 전사해 final_transcripts 를 만들고 구간 전사를 캐시
+track_b.py                   화자 구분 ASR 출력(segments)의 2인 채점. mono_baselines.py 가 호출하고, 명령행은 기존 segments 재채점용
 drive_api.py                Google 공식 SDK의 인증·청크 전송·서버 체크섬 검증
 drive_storage.py            개인 Drive 백업·복원, SHA-256 검증, Colab 주기 백업 세션
 setup_drive.py              개인 Desktop OAuth 클라이언트로 한 번만 브라우저 인증
 requirements-drive.txt      선택적 Drive 공식 라이브러리 버전
 tests/test_drive_storage.py 전송 중단·손상·동시 실행·체크포인트/RIR 복원·공식 SDK 테스트
+tests/test_drive_api.py     Drive 전송 계층 테스트: 파일 ID 업로드·다운로드, 같은 이름 폴더·파일, 합친 커밋 목록, 로컬 디스크 오류, 공식 SDK
 modern_asr.py                Qwen 전사 및 최신 화자 구분 모델의 별도 환경 추론 작업자
 mono_baselines.py            최신 단일채널 비교군의 재개·전사·채점 실행기
 setup_asr_env.py             모델별 독립 환경 설치와 패키지 목록 보존
@@ -577,6 +647,7 @@ notebooks/mono_baselines.ipynb  최신 단일채널 비교군 3종의 Colab 추�
 notebooks/track_b_vibevoice.ipynb  같은 실행기의 VibeVoice 전용 프리셋
 tools_make_demo_audio.py     웹페이지 6.2절 데모 오디오(단일 채널 · 정답 방위로 조향한 4채널)를 자르는 스크립트
 docs/index.html              GitHub Pages 배포용 벤치마크 웹페이지 (제출 HTML과 동일 본)
+docs/personal-drive.md       개인 Drive OAuth 설정, 복원·여러 런타임·가져오기·내보내기 가이드
 requirements.txt             최소 채점용 및 전체 파이프라인용 의존성 명세
 Makefile                     컴파일, 단위 테스트, 데이터 생성, 베이스라인 추론, 채점, 학습 자동화
 ```

@@ -2069,7 +2069,7 @@ tr.group-row td {
                     </a>
                   </div>
                   <p style="margin-block-start: 0.45rem;">
-                    <code>microsoft/VibeVoice-ASR</code>로 <code>eval-t2</code>·<code>eval-t2-static</code>의 세션마다 화자 구분 전사를 만들어 Drive에 남기고, 채점은 로컬의 <code>track_b.py</code>로 합니다.
+                    Colab에서 <code>mono_baselines.py</code>가 <code>microsoft/VibeVoice-ASR</code>로 <code>eval-t2</code>·<code>eval-t2-static</code>의 세션마다 화자 구분 전사를 만들고 바로 채점해, 결과를 Drive의 <code>mono_baselines/vibevoice/score.json</code>에 남깁니다. 노트북이 이 점수를 출력하며, <code>track_b.py</code> 명령행은 이미 있는 전사(<code>segments.jsonl</code>)를 다시 채점할 때만 씁니다.
                   </p>
                 </div>
                 <div class="colab-card-foot">
@@ -2453,7 +2453,7 @@ tr.group-row td {
                       <span class="sys-sub">음색 + 공간 점수 합산 · 무학습</span>
                     </th>
                     <td class="num best">0.878</td>
-                    <td class="num best">0.860</td>
+                    <td class="num best">0.859</td>
                     <td class="num best">0.833</td>
                     <td class="num best">0.833</td>
                     <td class="pending" aria-label="집계 중">—</td>

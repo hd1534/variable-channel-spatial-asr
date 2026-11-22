@@ -27,6 +27,9 @@ slot, through a cache shared by every system).  ``--asr wav2vec2`` transcribes
 missing segments here; ``--asr <backend-id>`` only reads that backend's cache
 and, when segments are missing, writes them to ``missing_segments.jsonl`` for a
 GPU notebook to fill, then stops.
+
+Only one ``eval_t2.py`` may write an ``--out`` directory at a time
+(``<out>/.eval.lock``); a second one stops at once.
 """
 
 from __future__ import annotations
@@ -53,6 +56,7 @@ from modern_asr import QWEN_BACKEND, cache_path, canonical_asr  # noqa: E402
 from models.slots import best_assignment_accuracy, online_slots, theta_grid, tune_theta  # noqa: E402
 from training.config import VAL_PROTOCOL_VERSION, config_fingerprint, load_config, load_config_dict  # noqa: E402
 from training.official import timepoint_records, track_for  # noqa: E402
+from training.runlock import exclusive_lock  # noqa: E402
 
 REPO = Path(__file__).resolve().parent
 SETS = ("eval-t2", "eval-t2-static")
@@ -333,7 +337,7 @@ def summary_settings(summary: dict[str, Any], name: str, variant: str) -> tuple[
         weight = summary.get("fusion_weight_by_M") if name == "naive_fusion" else None
     if theta is None:
         raise SystemExit(f"summary.json has no thresholds for {name}/{variant}: it predates them; rerun train.py on "
-                         "the run directory with this commit (add --allow-code-change for a checkpoint of another commit)")
+                         "the run directory (a finished run is revalidated on the current code without --allow-code-change)")
     return ({int(m): float(t) for m, t in theta.items()},
             {int(m): float(w) for m, w in weight.items()} if weight is not None else None)
 
@@ -565,6 +569,21 @@ def main(argv: list[str] | None = None) -> int:
     cache, backend = asr_cache(args)
     os.environ.setdefault("HF_HUB_OFFLINE", "1")
 
+    with exclusive_lock(Path(args.out) / ".eval.lock", busy_message(args.out)):
+        return run_sets(args, cfg, summary, best, variants, cache, backend)
+
+
+def busy_message(out: str) -> str:
+    """What a second ``eval_t2.py`` on the same ``--out`` is told before it stops."""
+    return (f"another eval_t2.py (pid {{pid}}) is already writing {out}; it can outlive a crashed notebook kernel. "
+            "Wait for it to finish, or stop it (`kill {pid}`, or Runtime > Disconnect and delete runtime on "
+            "Colab), then run again.")
+
+
+def run_sets(args: argparse.Namespace, cfg: Any, summary: dict[str, Any] | None, best: Path | None,
+             variants: list[str], cache: tr.SegmentCache, backend: Any) -> int:
+    """Embed, attribute, transcribe and score every requested set; 2 when transcripts are still missing."""
+    name = cfg.model.name
     settings: dict[str, tuple[dict[int, float], dict[int, float] | None]] = {}
     results: dict[str, Any] = {}
     for set_name in args.sets:

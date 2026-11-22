@@ -25,7 +25,7 @@ reach the causal oracle -- on this set's static condition naive fusion scores
 0.935/0.954/0.964 at M = 2/3/4 against an oracle of 0.948, voice-only 0.89.  A
 learned model then has nothing left to win and the comparison the benchmark
 exists for is decided by noise.  On the main condition the untrained rungs sit
-7-12 points below the oracle (naive fusion 0.833/0.860/0.878, voice-only
+7-12 points below the oracle (naive fusion 0.833/0.859/0.878, voice-only
 0.833).  The static set keeps the idealised view, on the same sessions.
 
 What a session holds:

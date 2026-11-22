@@ -21,8 +21,25 @@ crash.  Every write goes through :func:`atomic_save` (temp file +
 ``os.replace``), and :meth:`Run.fit` resumes from the newest checkpoint whose
 size and SHA-256 still match its ``LATEST.json`` entry, falling back to the one
 before.  A resumed run refuses a config whose fingerprint differs from the one
-it was started with, and code from another commit unless asked to
-(``--allow-code-change``); every commit a run has used is recorded.
+it was started with, and refuses to train further on code from another commit
+unless asked to (``--allow-code-change``).  A finished run (no step left) is
+re-validated and re-reported on the new code without it.  Every commit a run
+has used is recorded.
+
+``max_steps`` is outside the fingerprint, so a run can be extended.  The
+cosine learning-rate schedule is then recomputed for the new total and the
+rate jumps back up: such a run is not one run of the new length.  Every
+checkpoint and ``summary.json`` therefore keep ``schedule_segments``, one
+``{"start_step", "max_steps"}`` entry per schedule the run has trained under.
+
+A checkpoint written before that field existed holds no such history.  On
+resume it is rebuilt from the learning rates ``metrics.jsonl`` logged
+(:func:`logged_schedule_segments`), and every rebuilt entry carries
+``"inferred": true``; a restart the log only brackets also has
+``start_step_max``.  Without a usable log only the schedule of the
+checkpoint's own last rate is known, recorded with ``"start_step": null``
+because whether an earlier schedule preceded it is not.  A checkpoint still in
+warm-up needs neither: every ``max_steps`` gives the same rates there.
 """
 
 from __future__ import annotations
@@ -37,7 +54,7 @@ import random
 import subprocess
 import time
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterable
 
 import numpy as np
 import torch
@@ -72,6 +89,104 @@ def _restore_rng_state(state: dict[str, Any]) -> None:
     torch.set_rng_state(state["torch"].cpu())
     if state["cuda"] is not None and torch.cuda.is_available():
         torch.cuda.set_rng_state_all([item.cpu() for item in state["cuda"]])
+
+
+def lr_factor(step: int, warmup: int, total: int) -> float:
+    """Learning-rate multiplier at ``step``: linear warm-up over ``warmup`` steps, then
+    a cosine from 1 down to 0.1 at ``total``.
+
+    >>> lr_factor(0, 10, 100), lr_factor(10, 10, 100), lr_factor(100, 10, 100), lr_factor(200, 10, 100)
+    (0.1, 1.0, 0.1, 0.1)
+    """
+    if step < warmup:
+        return (step + 1) / warmup
+    progress = min(1.0, (step - warmup) / max(1, total - warmup))
+    return 0.1 + 0.9 * 0.5 * (1 + math.cos(math.pi * progress))
+
+
+def implied_max_steps(factor: float, step: int, warmup: int) -> int | None:
+    """The ``total`` for which :func:`lr_factor` gives ``factor`` at ``step``.
+
+    None when no single total does: up to the end of warm-up every total gives
+    the same rate, and a factor off the cosine fits none.
+
+    >>> implied_max_steps(lr_factor(2000, 500, 2000), 2000, 500), implied_max_steps(lr_factor(900, 500, 20000), 900, 500)
+    (2000, 20000)
+    >>> implied_max_steps(lr_factor(300, 500, 2000), 300, 500) is None, implied_max_steps(1.7, 900, 500) is None
+    (True, True)
+    """
+    cosine = (factor - 0.1) / 0.45 - 1  # cos(pi * progress)
+    if step <= warmup or not -1 - 1e-9 <= cosine < 1:
+        return None
+    total = round(warmup + (step - warmup) * math.pi / math.acos(max(-1.0, cosine)))
+    return total if math.isclose(lr_factor(step, warmup, total), factor, rel_tol=1e-6) else None
+
+
+def logged_schedule_segments(events: Iterable[dict[str, Any]], step: int, warmup: int, base_lr: float,
+                             latest: int) -> list[dict[str, Any]] | None:
+    """Rebuild ``schedule_segments`` from ``metrics.jsonl`` for a checkpoint written before they were kept.
+
+    ``events`` are the log's records in file order, ``step`` (past warm-up) is
+    the checkpoint's step, ``base_lr`` its scheduler's base rate and ``latest``
+    the ``max_steps`` its own last rate implies.  The ``max_steps`` in effect at
+    every ``train`` event past warm-up is read back from the rate it logged
+    (:func:`implied_max_steps`).  Where it changes between two such steps the
+    schedule restarted: not before the first, before the second, and neither
+    after the old schedule's end nor at or after the new one's.  A ``final``
+    event in that range (the old schedule ran to its end there) pins it.  A run
+    resumed from an older checkpoint logs the steps it trains again, so a
+    ``train`` event supersedes everything logged at its step or later, and
+    events past ``step`` are training this checkpoint never saw.
+
+    Every entry carries ``"inferred": True``.  ``start_step`` is the earliest
+    step the restart can have happened at and ``start_step_max``, present when
+    the log does not pin it, the latest.  The first entry starts at 0 only if
+    the log goes back to step 1, else at None (not known).  A schedule that
+    left no ``train`` event past warm-up is not seen.  None when the log holds
+    no ``train`` event up to ``step``, or a rate on no schedule.
+
+    >>> rate = lambda s, total: 1e-3 * lr_factor(s, 5, total)
+    >>> short = [{"kind": "train", "step": s, "lr": rate(s, 22)} for s in (1, 10, 20)]
+    >>> ended = short + [{"kind": "final", "trained_steps": 22}, {"kind": "train", "step": 30, "lr": rate(30, 200)}]
+    >>> logged_schedule_segments(ended, 30, 5, 1e-3, 200)
+    [{'start_step': 0, 'max_steps': 22, 'inferred': True}, {'start_step': 22, 'max_steps': 200, 'inferred': True}]
+    >>> logged_schedule_segments(short, 25, 5, 1e-3, 200)[1]  # the short schedule stopped at step 20, 21 or 22
+    {'start_step': 20, 'max_steps': 200, 'inferred': True, 'start_step_max': 22}
+    >>> logged_schedule_segments(short[1:], 22, 5, 1e-3, 22), logged_schedule_segments([], 22, 5, 1e-3, 22)
+    ([{'start_step': None, 'max_steps': 22, 'inferred': True}], None)
+    """
+    rates: dict[int, float] = {}  # step -> logged rate, in step order
+    finals: list[int] = []
+    for event in events:
+        at = event.get("step")
+        if event.get("kind") == "train" and isinstance(at, int) and isinstance(event.get("lr"), (int, float)):
+            if rates and next(reversed(rates)) >= at:  # resumed from an older checkpoint
+                rates = {s: lr for s, lr in rates.items() if s < at}
+            finals = [f for f in finals if f < at]
+            rates[at] = float(event["lr"])
+        elif event.get("kind") == "final" and isinstance(event.get("trained_steps"), int):
+            finals.append(event["trained_steps"])
+    rates = {s: lr for s, lr in rates.items() if s <= step}
+    if not rates or base_lr <= 0:
+        return None
+    totals = {s: implied_max_steps(lr / base_lr, s, warmup) for s, lr in rates.items() if s > warmup}
+    totals[step] = latest
+    if None in totals.values():
+        return None
+    points = sorted(totals.items())
+    segments: list[dict[str, Any]] = [{"start_step": 0 if 1 in rates else None, "max_steps": points[0][1],
+                                       "inferred": True}]
+    for (old_at, old), (new_at, new) in zip(points, points[1:]):
+        if new == old:
+            continue
+        # implied totals are never below their step, so lo <= hi
+        lo, hi = old_at, min(new_at - 1, old, new - 1)
+        pinned = [f for f in finals if lo <= f <= hi]
+        if pinned:
+            lo = hi = max(pinned)
+        segments.append({"start_step": lo, "max_steps": new, "inferred": True,
+                         **({"start_step_max": hi} if hi > lo else {})})
+    return segments
 
 
 def pick_device(requested: str | None = None) -> str:
@@ -191,6 +306,12 @@ def needed_banks(cfg: RunConfig) -> dict[str, BankSpec]:
 
 
 class Run:
+    schedule_segments: list[dict[str, Any]] | None = None
+    """Learning-rate schedules trained under so far, oldest first; None until a
+    resume sets it, which means one schedule of the current ``max_steps``.
+    Entries rebuilt for an older checkpoint are marked ``"inferred": True``
+    (:meth:`_saved_segments`)."""
+
     def __init__(self, cfg: RunConfig, run_dir: str | Path, data_root: str | Path, device: str | None = None,
                  workers: int | None = None, model_cache: str | None = None, bank_mirror: str | None = None,
                  allow_code_change: bool = False, overrides: dict[str, Any] | None = None,
@@ -234,14 +355,8 @@ class Run:
                       + list(self.pos_loss_fn.parameters()))
             self.opt = torch.optim.AdamW(params, lr=cfg.train.lr, weight_decay=cfg.train.weight_decay)
             warm, total = cfg.train.warmup_steps, max(cfg.train.max_steps, 1)
-
-            def lr_at(step: int) -> float:
-                if step < warm:
-                    return (step + 1) / warm
-                progress = min(1.0, (step - warm) / max(1, total - warm))
-                return 0.1 + 0.9 * 0.5 * (1 + math.cos(math.pi * progress))
-
-            self.sched = torch.optim.lr_scheduler.LambdaLR(self.opt, lr_at)
+            # LambdaLR saves no plain-function lambda: a resume always runs this schedule, for this total
+            self.sched = torch.optim.lr_scheduler.LambdaLR(self.opt, lambda step: lr_factor(step, warm, total))
             self.amp_dtype = None
             if cfg.train.amp and self.device == "cuda":
                 # bf16 natively from Ampere (capability 8) on; torch.cuda.is_bf16_supported() also says
@@ -278,6 +393,7 @@ class Run:
             "fingerprint": self.fingerprint,
             "commit": self.commit,
             "commits": self.commits,
+            "schedule_segments": self._segments(),
             "amp_dtype": str(self.amp_dtype),
             "model": self.system.state_dict(),
             "loss": self.loss_fn.state_dict(),
@@ -297,11 +413,16 @@ class Run:
         if state["fingerprint"] != self.fingerprint:
             raise SystemExit(f"{self.ckpts.dir} belongs to another config; refusing to resume")
         if state.get("commit") != self.commit and not self.allow_code_change:
-            raise SystemExit(
-                f"the checkpoint was trained with commit {state.get('commit')} but the code is {self.commit}. "
-                "Check out that commit to resume, or pass --allow-code-change to continue on the new code "
-                "(both commits are then recorded)."
-            )
+            if state["step"] < self.cfg.train.max_steps:
+                raise SystemExit(
+                    f"the checkpoint was trained with commit {state.get('commit')} but the code is {self.commit}. "
+                    "Check out that commit to resume, or pass --allow-code-change to continue on the new code "
+                    "(both commits are then recorded)."
+                )
+            self.log(f"[run] the checkpoint was trained with commit {state.get('commit')} and the code is "
+                     f"{self.commit}; training is finished (step {state['step']} >= max_steps "
+                     f"{self.cfg.train.max_steps}), so only validation and the report run on the new code "
+                     "(both commits are recorded)")
         self.commits = list(dict.fromkeys([*state.get("commits", [state.get("commit")]), self.commit]))
         self.system.load_state_dict(state["model"])
         self.loss_fn.load_state_dict(state["loss"])
@@ -313,9 +434,82 @@ class Run:
         if state.get("amp_dtype") != str(self.amp_dtype):
             self.log(f"[run] note: mixed precision changes from {state.get('amp_dtype')} to {self.amp_dtype} on resume")
         self.step = state["step"]
+        self._resume_schedule(state)
         _restore_rng_state(state["rng"])
         self._restore_best_selection()
         self.log(f"[run] resumed at step {self.step} (best selection score {self.best:.4f}, commits {self.commits})")
+
+    def _segments(self) -> list[dict[str, Any]]:
+        """The learning-rate schedules this run has trained under, oldest first."""
+        return self.schedule_segments or [{"start_step": 0, "max_steps": self.cfg.train.max_steps}]
+
+    def _logged_events(self) -> list[dict[str, Any]]:
+        """The records of ``metrics.jsonl`` in file order, without a line a crash cut short."""
+        try:
+            lines = (self.run_dir / "metrics.jsonl").read_text(encoding="utf-8").splitlines()
+        except OSError:
+            return []
+        events: list[dict[str, Any]] = []
+        for line in lines:
+            try:
+                event = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(event, dict):
+                events.append(event)
+        return events
+
+    def _saved_segments(self, state: dict[str, Any]) -> list[dict[str, Any]]:
+        """``schedule_segments`` for a checkpoint written before they were recorded.
+
+        Up to the end of warm-up every ``max_steps`` gives the same rates, so one
+        schedule of the current ``max_steps`` is exact.  Past it the history is
+        rebuilt from ``metrics.jsonl`` (:func:`logged_schedule_segments`), the
+        latest schedule read back from the rate the checkpoint's scheduler last
+        set.  Without a usable log only that schedule is known and not when it
+        started: ``[{"start_step": None, "max_steps": <latest>, "inferred": True}]``.
+        """
+        step, warm = int(state["step"]), self.cfg.train.warmup_steps
+        if step <= warm:
+            return [{"start_step": 0, "max_steps": self.cfg.train.max_steps}]
+        sched: dict[str, Any] = state.get("sched") or {}
+        last, base = sched.get("_last_lr"), sched.get("base_lrs")
+        latest = implied_max_steps(last[0] / base[0], step, warm) if last and base and base[0] > 0 else None
+        segments = None
+        if latest is not None:
+            segments = logged_schedule_segments(self._logged_events(), step, warm, base[0], latest)
+        source = "metrics.jsonl"
+        if segments is None:
+            source = "the checkpoint's last learning rate alone"
+            segments = [{"start_step": None, "max_steps": latest or self.cfg.train.max_steps, "inferred": True}]
+        self.log(f"[run] the checkpoint predates schedule_segments; inferred from {source}: {segments}")
+        return segments
+
+    def _resume_schedule(self, state: dict[str, Any]) -> None:
+        """Take over the checkpoint's schedule history; start a segment when ``max_steps`` changed.
+
+        A change takes effect only if training continues.  Before the end of
+        warm-up the rate so far is the same for every ``max_steps``, so the
+        current segment is only re-targeted instead.
+        """
+        saved = state.get("schedule_segments") or self._saved_segments(state)
+        segments: list[dict[str, Any]] = [dict(segment) for segment in saved]
+        before, after = segments[-1]["max_steps"], self.cfg.train.max_steps
+        if before != after and self.step < after:
+            warm = self.cfg.train.warmup_steps
+            if self.step <= warm:
+                segments[-1]["max_steps"] = after
+            else:
+                lr_before, lr_after = (self.cfg.train.lr * lr_factor(self.step, warm, max(total, 1))
+                                       for total in (before, after))
+                self.log(f"[run] WARNING: max_steps changes from {before} to {after} at step {self.step}, so the "
+                         f"learning-rate schedule restarts: recomputed for {after} steps, the rate jumps from "
+                         f"{lr_before:.3g} to {lr_after:.3g}. This is not one {after}-step run; summary.json "
+                         "records both schedules under schedule_segments.")
+                self._event(kind="schedule_restart", previous_max_steps=before, max_steps=after,
+                            lr_before=lr_before, lr_after=lr_after)
+                segments.append({"start_step": self.step, "max_steps": after})
+        self.schedule_segments = segments
 
     def _restore_best_selection(self) -> None:
         """Keep current scores or revalidate older, model-compatible best weights."""
@@ -860,6 +1054,7 @@ class Run:
             "state": self.cfg.model.state if self.cfg.model.name == "proposed" else None,
             "voice_encoder": self.cfg.model.voice_encoder if self.voice is not None else None,
             "trained_steps": self.step,
+            "schedule_segments": self._segments() if self.system.trainable else None,
             "best_step": best_step,
             "train_speakers": len(self.train_corpus) if self.train_corpus else None,
             "val_speakers": len(self.val_corpus),

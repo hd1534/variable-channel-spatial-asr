@@ -1,8 +1,13 @@
 """Personal Google Drive transport using Google's official Python libraries.
 
 Each thread owns its HTTP client. Uploads use pre-generated IDs and resumable
-requests, and verify Drive's size and MD5 before returning successfully.
-Credentials and SDK imports are kept outside the training/model modules.
+requests, and verify Drive's size and MD5 before returning the file's Drive ID.
+A download given that ID reads the file directly, so it never waits for Drive's
+search index. Runtimes writing at once can leave same-named folders and
+identical copies of one immutable file; both are read as one, while copies with
+different content stay an integrity error. Local disk failures are reported as
+local and never retried as network errors. Credentials and SDK imports are kept
+outside the training/model modules.
 """
 
 from __future__ import annotations
@@ -16,12 +21,15 @@ import re
 import threading
 import time
 from pathlib import Path
-from typing import Any, Callable, TypeVar
+from typing import Any, BinaryIO, Callable, TypeVar
 
 SCOPES: tuple[str, ...] = ("https://www.googleapis.com/auth/drive.file",)
 TOKEN_URI: str = "https://oauth2.googleapis.com/token"
 FOLDER_MIME: str = "application/vnd.google-apps.folder"
 FILE_FIELDS: str = "id,name,mimeType,size,md5Checksum,trashed"
+# <parents>--<id>.json: "root", or one or more parent commit IDs joined by "+" (a merge).
+COMMIT_NAME: re.Pattern[str] = re.compile(r"(?:root|[0-9a-f]{32}(?:\+[0-9a-f]{32})*)--[0-9a-f]{32}\.json")
+DRIVE_ID: re.Pattern[str] = re.compile(r"[A-Za-z0-9_-]+")
 CHUNK_BYTES: int = 8 * 1024 * 1024
 RETRY_DELAYS: tuple[int, ...] = (1, 2, 4, 8, 16, 32, 60, 60)  # about 3 minutes before a backup fails
 TOKEN_GRANT_ERRORS: frozenset[str] = frozenset({
@@ -181,6 +189,103 @@ def file_checksums(path: Path) -> tuple[int, str]:
     return size, digest.hexdigest()
 
 
+def quoted(value: str) -> str:
+    """Write a Drive search query string literal."""
+    return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
+
+
+def one_copy(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Return the smallest-ID row when the rows are copies of one file, else None.
+
+    A retried upload or two runtimes storing the same content-addressed object
+    can leave several copies under one name. They count as one file only when
+    Drive vouches for identical content (same size and MD5); a folder among them,
+    or a copy whose content Drive cannot vouch for, keeps the name ambiguous.
+    """
+    if not rows or any(row.get("mimeType") == FOLDER_MIME for row in rows):
+        return None
+    if len(rows) > 1 and (not all(row.get("md5Checksum") for row in rows)
+                          or len({(row.get("size"), row.get("md5Checksum")) for row in rows}) > 1):
+        return None
+    return min(rows, key=lambda row: row["id"])
+
+
+def local_write_error(relative: str, error: OSError) -> StorageError:
+    """Describe a failing local disk (usually a full Colab disk) so it is not mistaken for Drive."""
+    return StorageError(f"local disk write failed while restoring {relative}: "
+                        f"{error.strerror or type(error).__name__}; "
+                        "free space on the Colab disk or add prefixes to RESTORE_SKIP")
+
+
+def local_read_error(relative: str, local: Path, error: OSError) -> StorageError:
+    """Describe a local file that cannot be read during an upload; retrying the network cannot help."""
+    return StorageError(f"local disk read failed while backing up {relative} from {local}: "
+                        f"{error.strerror or type(error).__name__}")
+
+
+class DownloadSink:
+    """MediaIoBaseDownload destination that hashes each chunk once it is on the local disk.
+
+    The SDK advances its download offset before it writes a chunk, so after a
+    failed write a retried request would skip that chunk. A disk error therefore
+    ends the download as a StorageError, which retry() never repeats. Network
+    failures happen before the SDK writes anything, so a retried chunk is still
+    written exactly once. A chunk enters the size and MD5 only after all of it
+    was written, so the hashes describe the file without reading it back.
+    """
+
+    def __init__(self, handle: BinaryIO, relative: str) -> None:
+        """Wrap an open, unbuffered staging file for one committed object."""
+        self.handle: BinaryIO = handle
+        self.relative: str = relative
+        self.size: int = 0
+        self.md5: Any = hashlib.md5()
+
+    def write(self, data: bytes) -> int:
+        """Write the whole chunk (an unbuffered file may take it in parts) or fail as a local error."""
+        view = memoryview(data)
+        try:
+            while view:
+                view = view[self.handle.write(view):]
+        except OSError as error:
+            raise local_write_error(self.relative, error) from error
+        self.size += len(data)
+        self.md5.update(data)
+        return len(data)
+
+
+def chunk_media(handle: BinaryIO, relative: str, local: Path) -> Any:
+    """Resumable media that reads each chunk into memory before sending it.
+
+    MediaFileUpload streams the file while the request is on the wire, so a
+    failing local disk surfaced as an OSError from the socket send: retry()
+    took it for a network error and repeated it for minutes, and the request
+    was left half sent. Reading the chunk first keeps a local error local and
+    out of the connection; after a network error the chunk is read again from
+    the offset Drive confirmed.
+    """
+    from googleapiclient.http import MediaIoBaseUpload
+
+    class ChunkMedia(MediaIoBaseUpload):
+        """MediaIoBaseUpload that hands the SDK bytes instead of a stream."""
+
+        def has_stream(self) -> bool:
+            """Make HttpRequest.next_chunk call getbytes() before it sends."""
+            return False
+
+        def getbytes(self, begin: int, length: int) -> bytes:
+            """Read one chunk, reporting a disk failure as local."""
+            try:
+                return super().getbytes(begin, length)
+            except OSError as error:
+                raise local_read_error(relative, local, error) from error
+
+    try:
+        return ChunkMedia(handle, mimetype="application/octet-stream", chunksize=CHUNK_BYTES, resumable=True)
+    except OSError as error:  # the constructor seeks to the end for the size
+        raise local_read_error(relative, local, error) from error
+
+
 def create_folder(service: Any, name: str, parent: str = "root") -> dict[str, Any]:
     """Create one folder idempotently, including recovery after an ambiguous HTTP response."""
     identifier = execute(service.files().generateIds(count=1, space="drive", type="files"))["ids"][0]
@@ -195,17 +300,25 @@ def create_folder(service: Any, name: str, parent: str = "root") -> dict[str, An
 
 
 class GoogleDriveTransport:
-    """Immutable backup objects addressed by project-relative names and cached Drive IDs."""
+    """Immutable backup objects addressed by project-relative names and cached Drive IDs.
+
+    One project-relative directory can be several same-named Drive folders: two
+    runtimes that both find it missing both create it. ``folders`` holds the one
+    new files go into (the smallest ID, which every runtime seeing all of them
+    picks alike) and ``duplicate_folders`` the others, which every lookup and
+    listing searches as well.
+    """
 
     def __init__(self, folder_id: str, service_factory: Callable[[], Any]) -> None:
         """Scope every operation to one dedicated project folder."""
-        if not re.fullmatch(r"[A-Za-z0-9_-]+", folder_id) or folder_id == "root":
+        if not DRIVE_ID.fullmatch(folder_id) or folder_id == "root":
             raise StorageError("a dedicated Drive folder ID is required")
         self.remote: str = "gdrive:" + folder_id
         self.folder_id: str = folder_id
         self.factory: Callable[[], Any] = service_factory
         self.clients: threading.local = threading.local()
         self.folders: dict[str, str] = {"": folder_id}
+        self.duplicate_folders: dict[str, list[str]] = {}
         self.files: dict[str, dict[str, Any]] = {}
 
     @classmethod
@@ -221,12 +334,12 @@ class GoogleDriveTransport:
             self.clients.service = self.factory()
         return self.clients.service
 
-    def _list(self, parent: str, name: str | None = None) -> list[dict[str, Any]]:
-        """Read every page and keep duplicate names visible to integrity checks."""
-        query = f"'{parent}' in parents and trashed = false"
+    def _list(self, parents: list[str], name: str | None = None) -> list[dict[str, Any]]:
+        """Read every page under all folders of one directory; duplicate names stay visible."""
+        query = " or ".join(f"{quoted(parent)} in parents" for parent in parents)
+        query = (f"({query})" if len(parents) > 1 else query) + " and trashed = false"
         if name is not None:
-            escaped = name.replace("\\", "\\\\").replace("'", "\\'")
-            query += f" and name = '{escaped}'"
+            query += f" and name = {quoted(name)}"
         rows: list[dict[str, Any]] = []
         page: str | None = None
         while True:
@@ -237,34 +350,93 @@ class GoogleDriveTransport:
             if not page:
                 return rows
 
-    def _folder(self, path: str, *, create: bool = False) -> str:
-        """Resolve/cache folder IDs without treating authentication errors as missing paths."""
-        if path in self.folders:
-            return self.folders[path]
-        parent_path, _, name = path.rpartition("/")
-        parent = self._folder(parent_path, create=create)
-        rows = self._list(parent, name)
-        if len(rows) > 1 or (rows and rows[0]["mimeType"] != FOLDER_MIME):
+    def _subfolders(self, parents: list[str], name: str, path: str) -> list[dict[str, Any]]:
+        """List the folders named ``name`` under a directory; a file of that name is an integrity error."""
+        rows = self._list(parents, name)
+        if any(row["mimeType"] != FOLDER_MIME for row in rows):
             raise StorageError(f"ambiguous Drive backup directory: {path}")
-        if not rows:
-            if not create:
-                raise StorageError(f"Drive backup directory is missing: {path}")
-            rows = [create_folder(self.service, name, parent)]
-        self.folders[path] = rows[0]["id"]
-        return self.folders[path]
+        return rows
+
+    def _folder_ids(self, path: str, *, create: bool = False) -> list[str]:
+        """Resolve/cache every Drive folder of one directory, the creation target first.
+
+        Authentication errors are never taken for missing paths. After creating
+        a folder the parent is listed again, so a folder another runtime created
+        at the same moment is found and joins the same directory.
+        """
+        if path not in self.folders:
+            parent_path, _, name = path.rpartition("/")
+            parents = self._folder_ids(parent_path, create=create)
+            rows = self._subfolders(parents, name, path)
+            if not rows:
+                if not create:
+                    raise StorageError(f"Drive backup directory is missing: {path}")
+                created = create_folder(self.service, name, parents[0])
+                rows = self._subfolders(parents, name, path)
+                if created["id"] not in {row["id"] for row in rows}:
+                    rows.append(created)  # searches may not list a new folder yet
+            ids = sorted(row["id"] for row in rows)
+            self.duplicate_folders[path] = ids[1:]
+            self.folders[path] = ids[0]
+        return [self.folders[path], *self.duplicate_folders.get(path, [])]
+
+    def _folder(self, path: str, *, create: bool = False) -> str:
+        """Return the folder new files of a directory are created in."""
+        return self._folder_ids(path, create=create)[0]
+
+    def _forget(self, path: str) -> None:
+        """Drop a cached directory and its ancestors so the next lookup lists Drive again."""
+        while path:
+            self.folders.pop(path, None)
+            self.duplicate_folders.pop(path, None)
+            path = path.rpartition("/")[0]
 
     def _lookup(self, relative: str) -> dict[str, Any] | None:
-        """Resolve one immutable file; duplicate names cannot silently choose different content."""
+        """Resolve one immutable file; identical copies are one file, differing copies an integrity error."""
         if relative in self.files:
             return self.files[relative]
         parent, _, name = relative.rpartition("/")
-        rows = self._list(self._folder(parent), name)
-        if len(rows) > 1 or (rows and rows[0]["mimeType"] == FOLDER_MIME):
+        rows = self._list(self._folder_ids(parent), name)
+        if not rows:
+            return None
+        entry = one_copy(rows)
+        if entry is None:
             raise StorageError(f"ambiguous Drive backup file: {relative}")
-        if rows:
-            self.files[relative] = rows[0]
-            return rows[0]
-        return None
+        self.files[relative] = entry
+        return entry
+
+    def _find(self, relative: str) -> dict[str, Any] | None:
+        """Look up a committed file by name, listing its folders afresh once before calling it missing.
+
+        The cached folders may predate a same-named folder another runtime created.
+        """
+        entry = self._lookup(relative)
+        if entry is None:
+            self._forget(relative.rpartition("/")[0])
+            entry = self._lookup(relative)
+        return entry
+
+    def _metadata(self, identifier: str) -> dict[str, Any] | None:
+        """Read one file's metadata by ID, which is strongly consistent; None when Drive has no such file."""
+        request = self.service.files().get(fileId=identifier, fields=FILE_FIELDS)
+        try:
+            return retry(lambda: request.execute(num_retries=0))
+        except Exception as error:
+            if error_status(error)[0] == 404:
+                return None
+            raise api_error(error) from None
+
+    def _referenced(self, relative: str, ref: str) -> dict[str, Any] | None:
+        """Read the file a manifest recorded by ID and check it is that object; None when it is gone."""
+        if not DRIVE_ID.fullmatch(ref):
+            raise StorageError(f"invalid Drive file reference for {relative}")
+        entry = self._metadata(ref)
+        if entry is None or entry.get("trashed"):
+            return None
+        if entry.get("mimeType") == FOLDER_MIME or entry.get("name") != relative.rpartition("/")[2]:
+            raise StorageError(f"Drive file reference does not point to {relative}")
+        self.files[relative] = entry
+        return entry
 
     def prepare(self) -> None:
         """Validate access to the project folder and initialize only backup-owned subfolders."""
@@ -274,22 +446,30 @@ class GoogleDriveTransport:
         self._folder("commits", create=True)
         self._folder("objects", create=True)
 
+    def refresh(self) -> None:
+        """Find commits folders created by another runtime since this one cached the directory."""
+        self._forget("commits")
+
     def commits(self) -> list[str]:
-        """Refresh history from Drive rather than trusting a stale directory listing."""
-        rows = self._list(self._folder("commits"))
-        names: list[str] = []
-        for row in rows:
-            name = row["name"]
-            if row["mimeType"] != FOLDER_MIME and re.fullmatch(r"(?:root|[0-9a-f]{32})--[0-9a-f]{32}\.json", name):
-                if name in names:
-                    raise StorageError("duplicate Drive backup manifest names")
-                names.append(name)
-                self.files["commits/" + name] = row
-        return names
+        """List every manifest name in all commits folders, read from Drive rather than a stale cache.
+
+        Identical copies of one manifest (same size and MD5) are one commit;
+        copies that differ would make the history ambiguous.
+        """
+        copies: dict[str, list[dict[str, Any]]] = {}
+        for row in self._list(self._folder_ids("commits")):
+            if row["mimeType"] != FOLDER_MIME and COMMIT_NAME.fullmatch(row["name"]):
+                copies.setdefault(row["name"], []).append(row)
+        for name, rows in copies.items():
+            entry = one_copy(rows)
+            if entry is None:
+                raise StorageError(f"duplicate Drive backup manifest names with different content: {name}")
+            self.files["commits/" + name] = entry
+        return list(copies)
 
     def manifest(self, name: str) -> dict[str, Any]:
         """Read a small committed manifest through its Drive file ID."""
-        entry = self._lookup("commits/" + name)
+        entry = self._find("commits/" + name)
         if entry is None:
             raise StorageError("committed backup manifest is missing")
         data = execute(self.service.files().get_media(fileId=entry["id"]))
@@ -297,51 +477,80 @@ class GoogleDriveTransport:
             raise StorageError("backup manifest checksum mismatch")
         return json.loads(data)
 
-    def upload(self, local: Path, relative: str) -> None:
-        """Wait for a resumable upload and verify server metadata before accepting its content."""
-        from googleapiclient.http import MediaFileUpload
+    def upload(self, local: Path, relative: str) -> str:
+        """Store one immutable file unless it exists; return the Drive ID of the verified file.
 
-        parent, _, name = relative.rpartition("/")
-        folder = self._folder(parent, create=True)
-        size, digest = file_checksums(local)
+        A new file counts as stored only after the resumable upload finished and
+        Drive's size and MD5 match the local bytes; an existing one only when its
+        size and MD5 match.
+        """
+        folder = self._folder(relative.rpartition("/")[0], create=True)
+        try:
+            size, digest = file_checksums(local)
+        except OSError as error:  # the file vanished or the disk failed before anything was sent
+            raise local_read_error(relative, local, error) from error
         entry = self._lookup(relative)
         if entry is None:
-            identifier = execute(self.service.files().generateIds(count=1, space="drive", type="files"))["ids"][0]
-            media = MediaFileUpload(str(local), mimetype="application/octet-stream", chunksize=CHUNK_BYTES, resumable=True)
-            request = self.service.files().create(body={"id": identifier, "name": name, "parents": [folder]},
-                                                  media_body=media, fields=FILE_FIELDS)
+            entry = self._send(local, relative, folder)
+        if int(entry.get("size", -1)) != size or entry.get("md5Checksum") != digest:
+            raise StorageError(f"uploaded Drive object checksum mismatch: {relative}")
+        self.files[relative] = entry
+        return entry["id"]
+
+    def _send(self, local: Path, relative: str, folder: str) -> dict[str, Any]:
+        """Upload under a pre-generated ID and read that ID's metadata back (searches may lag)."""
+        identifier = execute(self.service.files().generateIds(count=1, space="drive", type="files"))["ids"][0]
+        try:
+            handle = local.open("rb")
+        except OSError as error:
+            raise local_read_error(relative, local, error) from error
+        with handle:
+            media = chunk_media(handle, relative, local)
+            request = self.service.files().create(
+                body={"id": identifier, "name": relative.rpartition("/")[2], "parents": [folder]},
+                media_body=media, fields=FILE_FIELDS)
             response: Any = None
             try:
                 while response is None:
                     _, response = retry(lambda: request.next_chunk(num_retries=0))
+            except StorageError:
+                raise
             except Exception as error:
-                if error_status(error)[0] != 409:
+                if error_status(error)[0] != 409:  # 409: an earlier attempt already stored this ID
                     raise api_error(error) from None
-            finally:
-                media.stream().close()
-            # A direct ID read avoids depending on newly uploaded files appearing in searches.
-            entry = execute(self.service.files().get(fileId=identifier, fields=FILE_FIELDS))
-        if int(entry.get("size", -1)) != size or entry.get("md5Checksum") != digest:
-            raise StorageError(f"uploaded Drive object checksum mismatch: {relative}")
-        self.files[relative] = entry
+        return execute(self.service.files().get(fileId=identifier, fields=FILE_FIELDS))
 
-    def download(self, relative: str, local: Path) -> None:
-        """Stream an object into the caller's staging file with bounded chunk retries."""
-        from googleapiclient.http import MediaIoBaseDownload
+    def download(self, relative: str, local: Path, ref: str | None = None) -> None:
+        """Stream one committed file into the caller's staging file and verify Drive's size and MD5.
 
-        entry = self._lookup(relative)
+        ``ref`` is the Drive ID upload() returned. The file is then read by ID,
+        so a file Drive has not indexed for searches yet is still found; without
+        it the file is looked up by name.
+        """
+        entry = self._referenced(relative, ref) if ref is not None else self._find(relative)
         if entry is None:
             raise StorageError(f"committed Drive object is missing: {relative}")
-        local.parent.mkdir(parents=True, exist_ok=True)
-        with local.open("wb") as handle:
-            request = self.service.files().get_media(fileId=entry["id"])
-            downloader = MediaIoBaseDownload(handle, request, chunksize=CHUNK_BYTES)
-            done: bool = False
-            try:
-                while not done:
-                    _, done = retry(lambda: downloader.next_chunk(num_retries=0))
-            except Exception as error:
-                raise api_error(error) from None
-        size, digest = file_checksums(local)
-        if int(entry.get("size", -1)) != size or entry.get("md5Checksum") != digest:
+        sink = self._receive(self.service.files().get_media(fileId=entry["id"]), local, relative)
+        if int(entry.get("size", -1)) != sink.size or entry.get("md5Checksum") != sink.md5.hexdigest():
             raise StorageError(f"downloaded Drive object checksum mismatch: {relative}")
+
+    def _receive(self, request: Any, local: Path, relative: str) -> DownloadSink:
+        """Write every chunk through a hashing sink; only transport failures are retried."""
+        from googleapiclient.http import MediaIoBaseDownload
+
+        try:
+            local.parent.mkdir(parents=True, exist_ok=True)
+            with local.open("wb", buffering=0) as handle:
+                sink = DownloadSink(handle, relative)
+                downloader = MediaIoBaseDownload(sink, request, chunksize=CHUNK_BYTES)
+                done: bool = False
+                try:
+                    while not done:
+                        _, done = retry(lambda: downloader.next_chunk(num_retries=0))
+                except StorageError:
+                    raise
+                except Exception as error:
+                    raise api_error(error) from None
+        except OSError as error:  # creating, opening or closing the staging file
+            raise local_write_error(relative, error) from error
+        return sink

@@ -8,10 +8,15 @@ nor runs causally, so it is reported as a reference (``observation_mode =
 with M except through which microphone it hears (the lowest active one, like
 every other row).
 
-Input: JSONL from ``notebooks/track_b_vibevoice.ipynb``, one row per
-``(set, session_id, channel)`` with a ``segments`` list.  Usage::
+Input: JSONL with one row per ``(set, session_id, channel)`` and a
+``segments`` list.  The notebooks (``notebooks/mono_baselines.ipynb`` and the
+VibeVoice preset ``notebooks/track_b_vibevoice.ipynb``) do not hand such a file
+to this script: they run ``mono_baselines.py``, which writes
+``mono_baselines/<run>/segments.jsonl``, scores it with :func:`score_segments`
+and writes ``mono_baselines/<run>/score.json`` itself.  The command line only
+rescores an existing segments file::
 
-    python3 track_b.py --segments vibevoice_segments.jsonl --out runs/eval/track_b_vibevoice
+    python3 track_b.py --segments mono_baselines/vibevoice/segments.jsonl --out runs/eval/track_b_vibevoice
 """
 
 from __future__ import annotations
