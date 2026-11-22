@@ -394,6 +394,29 @@ class TestSnapshots(StoreCase):
             session.run([sys.executable, "-c", "pass"])
         storage.acquire_lock(self.root).close()
 
+    def test_run_shows_child_output_and_reports_its_error(self) -> None:
+        """Colab shows only sys.stdout, so child output is relayed there and kept in the failure."""
+        import contextlib
+        import io
+
+        session = storage.StorageSession(self.store, interval_sec=60)
+        try:
+            shown = io.StringIO()
+            script = ("import sys; print('worker: started'); "
+                      "print('Traceback: CUDA out of memory', file=sys.stderr); sys.exit(3)")
+            with contextlib.redirect_stdout(shown):
+                with self.assertRaises(subprocess.CalledProcessError) as caught:
+                    session.run([sys.executable, "-c", script])
+            self.assertIn("worker: started", shown.getvalue())
+            self.assertIn("CUDA out of memory", shown.getvalue())
+            self.assertEqual(caught.exception.returncode, 3)
+            self.assertIn("CUDA out of memory", str(caught.exception))
+            with contextlib.redirect_stdout(io.StringIO()) as quiet:
+                self.assertEqual(session.run([sys.executable, "-c", "print('ok')"]), 0)
+            self.assertIn("ok", quiet.getvalue())
+        finally:
+            session.close()
+
     def test_flush_reports_an_up_to_date_backup(self) -> None:
         """The final notebook flush says so even when the previous command already backed everything up."""
         lines: list[str] = []

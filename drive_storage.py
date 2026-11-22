@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import argparse
 import calendar
+import codecs
+import collections
 import contextlib
 import hashlib
 import json
@@ -27,6 +29,7 @@ import re
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -1495,6 +1498,56 @@ class SnapshotStore:
         return written
 
 
+def relay_output(process: subprocess.Popen, sink: TextIO | None = None,
+                 tail_lines: int = 60) -> tuple[threading.Thread, collections.deque]:
+    """Copy a child's piped output to this process's sys.stdout as it arrives.
+
+    Colab shows only what the kernel writes through sys.stdout; a child that
+    inherits the raw file descriptors prints nowhere visible.  The last lines
+    are kept so a failure can be reported with its actual error message.
+    Output is forwarded in chunks, so progress bars that use a carriage return still update.
+    """
+    tail: collections.deque = collections.deque(maxlen=tail_lines)
+
+    def pump() -> None:
+        decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+        pending = ""
+        stream = process.stdout
+        assert stream is not None
+        while True:
+            chunk = stream.read1(65536) if hasattr(stream, "read1") else stream.read(65536)
+            text = decoder.decode(chunk or b"", final=not chunk)
+            if text:
+                out = sink or sys.stdout
+                out.write(text)
+                out.flush()
+                pending += text
+                *lines, pending = re.split(r"\r?\n|\r", pending)
+                tail.extend(line for line in lines if line.strip())
+            if not chunk:
+                break
+        if pending.strip():
+            tail.append(pending)
+
+    thread = threading.Thread(target=pump, name="relay-output", daemon=True)
+    thread.start()
+    return thread, tail
+
+
+def failure_with_output(returncode: int, command: str | Sequence[str], tail: Iterable[str]) -> subprocess.CalledProcessError:
+    """A CalledProcessError whose message ends with the child's last output lines."""
+    lines = list(tail)
+
+    class CommandFailed(subprocess.CalledProcessError):
+        def __str__(self) -> str:
+            text = super().__str__()
+            if lines:
+                text += "\n--- last output lines ---\n" + "\n".join(lines)
+            return text
+
+    return CommandFailed(returncode, command, output="\n".join(lines))
+
+
 class StorageSession:
     """Periodic backup, command-boundary syncs and flushes for a Colab notebook."""
 
@@ -1553,7 +1606,9 @@ class StorageSession:
         """Sync, run a job, abort on backup failure, and flush completed files on exit."""
         self.sync()
         process = subprocess.Popen(command, shell=shell, start_new_session=os.name == "posix",
+                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                    env={**os.environ, "PYTHONUNBUFFERED": "1"})
+        relay, tail = relay_output(process)
         try:
             while process.poll() is None:
                 self.check()
@@ -1572,10 +1627,12 @@ class StorageSession:
                 else:
                     process.kill()
                 process.wait()
+            relay.join(timeout=5)
             raise
+        relay.join()
         self.flush()
         if process.returncode and check:
-            raise subprocess.CalledProcessError(process.returncode, command)
+            raise failure_with_output(process.returncode, command, tail)
         return int(process.returncode)
 
     def close(self) -> None:
