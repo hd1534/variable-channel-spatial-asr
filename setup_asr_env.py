@@ -36,6 +36,27 @@ IMPORT_CHECKS: dict[str, str] = {
 }
 
 
+def has_pip(python: Path) -> bool:
+    """True when this interpreter can run pip (its own or the system one)."""
+    return subprocess.run([str(python), "-m", "pip", "--version"],
+                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+
+
+def ensure_pip(python: Path) -> None:
+    """Give a venv a working pip without relying on ensurepip alone.
+
+    With system_site_packages the system pip is importable and installs into
+    the venv, so ensurepip is only the fallback.  A venv left half-made by an
+    earlier failed attempt is repaired here instead of being reused broken.
+    """
+    if has_pip(python):
+        return
+    subprocess.run([str(python), "-m", "ensurepip", "--upgrade", "--default-pip"], check=False)
+    if not has_pip(python):
+        raise RuntimeError(f"{python} has no pip: neither the system pip nor ensurepip is available. "
+                           "Install pip for the base interpreter (e.g. apt-get install python3-pip) and retry.")
+
+
 def setup(profile: str, root: Path) -> Path:
     """Install a pinned adapter in a separate venv and return its interpreter."""
     directory = root / profile
@@ -50,7 +71,9 @@ def setup(profile: str, root: Path) -> Path:
             subprocess.run([str(python), "-c", IMPORT_CHECKS[profile]], check=True)
             return python
     if not python.is_file():
-        venv.EnvBuilder(with_pip=True, system_site_packages=True).create(directory)
+        # with_pip=True runs ensurepip, which Colab's Debian Python (3.13) does not ship.
+        venv.EnvBuilder(with_pip=False, system_site_packages=True).create(directory)
+    ensure_pip(python)
     subprocess.run([str(python), "-m", "pip", "install", "--upgrade", "pip"], check=True)
     subprocess.run([str(python), "-m", "pip", "install", *PROFILES[profile]], check=True)
     subprocess.run([str(python), "-c", IMPORT_CHECKS[profile]], check=True)

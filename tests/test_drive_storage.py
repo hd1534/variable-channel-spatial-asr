@@ -1406,9 +1406,11 @@ class TestCredentials(unittest.TestCase):
                 storage.connect_personal_drive(root, auth_file=root / "drive-auth.json")
 
     def test_notebooks_use_official_api_and_preserve_the_two_asr_evaluations(self) -> None:
-        """All notebook jobs share verified backups and retain the existing experiment choices."""
+        """Training and benchmark notebooks share verified backups and keep the two-ASR evaluation."""
         repository = Path(__file__).resolve().parents[1]
-        for name in ("train_template.ipynb", "mono_baselines.ipynb", "track_b_vibevoice.ipynb"):
+        self.assertFalse((repository / "notebooks" / "mono_baselines.ipynb").exists())
+        self.assertFalse((repository / "notebooks" / "track_b_vibevoice.ipynb").exists())
+        for name in ("train_template.ipynb", "benchmark.ipynb"):
             notebook = json.loads((repository / "notebooks" / name).read_text())
             sources = ["".join(cell["source"]) for cell in notebook["cells"] if cell["cell_type"] == "code"]
             for i, source in enumerate(sources):
@@ -1423,8 +1425,15 @@ class TestCredentials(unittest.TestCase):
             self.assertNotIn("rclone", code)
             self.assertIn('elif STORAGE_BACKEND == "mounted_drive":', code)
             if name == "train_template.ipynb":
-                self.assertIn('"all": ["qwen3-1.7b", "wav2vec2"]', code)
+                # Training and validation only: the benchmark notebook scores the eval sets.
+                self.assertNotIn("eval_t2", code)
+                self.assertNotIn("RUN_EVAL_T2", code)
+            if name == "benchmark.ipynb":
+                self.assertIn('["qwen3-1.7b", "wav2vec2"] if ASR == "all"', code)
                 self.assertIn("share_embeddings_across_asr", code)
+                self.assertIn("eval_t2.eval_is_complete", code)
+                self.assertIn('"mono_baselines.py"', code)
+                self.assertIn('"track_b": ["vibevoice"]', code)
 
 
 class ApiFailure(Exception):

@@ -105,7 +105,7 @@ VM이 초기화되어 업로드 세션을 잃으면 마지막 완료 백업을 �
 
 ## 5. 여러 런타임에서 같은 폴더 쓰기
 
-여러 런타임이 같은 백업 폴더를 동시에 써도 된다. 예를 들어 학습 노트북과 `mono_baselines.ipynb`를
+여러 런타임이 같은 백업 폴더를 동시에 써도 된다. 예를 들어 학습 노트북(`train_template.ipynb`)과 본 평가 노트북(`benchmark.ipynb`)을
 서로 다른 런타임에서 같은 `DRIVE_AUTH`로 실행할 수 있다. 단, 모든 런타임이 새 코드를 돌릴 때만 그렇다(아래 "이전 코드에서 올릴 때").
 
 - 런타임마다 자기 백업 이력을 이어 간다. 다른 런타임이 백업했다고 실행 중인 작업이 멈추지 않는다.
@@ -145,9 +145,8 @@ VM이 초기화되어 업로드 세션을 잃으면 마지막 완료 백업을 �
 
 | 노트북 | 기본 `RESTORE_SKIP` |
 |---|---|
-| `train_template.ipynb` | mono 비교군 전용 가중치: Nemotron, VibeVoice, MOSS, VibeVoice 토크나이저 `Qwen/Qwen2.5-7B` |
-| `mono_baselines.ipynb` | `cache`, `rirbanks`, `runs`, `models/ecapa`, wav2vec2 가중치 |
-| `track_b_vibevoice.ipynb` | `mono_baselines.ipynb`의 기본값과 Nemotron·MOSS·Qwen3-ASR-1.7B 가중치 |
+| `train_template.ipynb` | 본 평가 결과(`eval`, `mono_baselines`), 전사 캐시(`asr_cache`), 전사기·단일채널 비교군 가중치: Qwen3-ASR-1.7B, wav2vec2, Nemotron, VibeVoice, MOSS, VibeVoice 토크나이저 `Qwen/Qwen2.5-7B` |
+| `benchmark.ipynb` | `cache`, `rirbanks`, 학습 재개용 체크포인트 `runs/<실행>/ckpt`, 고르지 않은 시스템만 쓰는 가중치. 우리 시스템을 고르지 않으면 `runs`, `models/ecapa`도 |
 
 다른 목록이 필요하면 연결 셀 전에 `RESTORE_SKIP`에 경로 접두어 목록을 넣는다. 빈 목록(`[]`)이면 모두 받는다.
 

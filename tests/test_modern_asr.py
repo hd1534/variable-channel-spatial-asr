@@ -14,7 +14,7 @@ import types
 import unittest
 from pathlib import Path
 from typing import Any
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import numpy as np
 
@@ -137,7 +137,7 @@ class TestRuntimeProvisioning(unittest.TestCase):
                 (path / "bin" / "python").touch()
 
             with patch.object(setup_asr_env.venv, "EnvBuilder") as builder, \
-                 patch.object(setup_asr_env.subprocess, "run") as execute, \
+                 patch.object(setup_asr_env.subprocess, "run", return_value=MagicMock(returncode=0)) as execute, \
                  patch.object(setup_asr_env.subprocess, "check_output", return_value="qwen-asr==0.0.6\n"):
                 builder.return_value.create.side_effect = create
                 python = setup_asr_env.setup("qwen", root)
@@ -157,10 +157,47 @@ class TestRuntimeProvisioning(unittest.TestCase):
             root = Path(directory)
             (root / "qwen" / "bin").mkdir(parents=True)
             (root / "qwen" / "bin" / "python").touch()
-            with patch.object(setup_asr_env.subprocess, "run", side_effect=[None, None, RuntimeError("import failed")]):
+            ok = MagicMock(returncode=0)
+            with patch.object(setup_asr_env.subprocess, "run",
+                              side_effect=[ok, ok, ok, RuntimeError("import failed")]):
                 with self.assertRaisesRegex(RuntimeError, "import failed"):
                     setup_asr_env.setup("qwen", root)
             self.assertFalse((root / "qwen" / "vcsasr-runtime.json").exists())
+
+    def test_venv_is_made_without_ensurepip(self) -> None:
+        """Colab's Debian Python has no ensurepip, so the venv must not depend on it."""
+        import setup_asr_env
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with patch.object(setup_asr_env.venv, "EnvBuilder") as builder, \
+                 patch.object(setup_asr_env.subprocess, "run", return_value=MagicMock(returncode=0)), \
+                 patch.object(setup_asr_env.subprocess, "check_output", return_value=""):
+                builder.return_value.create.side_effect = \
+                    lambda path: ((path / "bin").mkdir(parents=True), (path / "bin" / "python").touch())
+                setup_asr_env.setup("qwen", root)
+            self.assertFalse(builder.call_args.kwargs["with_pip"])
+
+    def test_missing_pip_falls_back_to_ensurepip_then_fails_clearly(self) -> None:
+        """A half-made venv without pip is repaired by ensurepip, or stops with a clear message."""
+        import setup_asr_env
+
+        python = Path("/venv/bin/python")
+        calls: list[list[str]] = []
+
+        def run(command, **kwargs):
+            calls.append(command)
+            if command[1:] == ["-m", "pip", "--version"]:
+                return MagicMock(returncode=0 if any("ensurepip" in c for c in calls) else 1)
+            return MagicMock(returncode=0)
+
+        with patch.object(setup_asr_env.subprocess, "run", side_effect=run):
+            setup_asr_env.ensure_pip(python)
+        self.assertIn([str(python), "-m", "ensurepip", "--upgrade", "--default-pip"], calls)
+
+        with patch.object(setup_asr_env.subprocess, "run", return_value=MagicMock(returncode=1)):
+            with self.assertRaisesRegex(RuntimeError, "no pip"):
+                setup_asr_env.ensure_pip(python)
 
 
 @unittest.skipUnless(HAS_TORCH, "official API shape tests require torch")

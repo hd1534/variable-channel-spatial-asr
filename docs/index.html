@@ -2035,7 +2035,7 @@ tr.group-row td {
                     </a>
                   </div>
                   <p style="margin-block-start: 0.45rem;">
-                    4채널 공간 특징을 추출하는 <code>TAC</code> 모듈과 적응형 게이트 및 스트리밍 순환 상태 전이 방식(청크마다 은닉 상태를 초기화하는 <code>Chunk-Reset</code> vs 이전 청크 상태를 이어받는 <code>Carry-Over</code>)에 가변 채널 드롭아웃을 적용해 학습하고, <code>M = 4 → 2 → 1</code> 전이 성능을 측정합니다.
+                    4채널 공간 특징을 추출하는 <code>TAC</code> 모듈과 적응형 게이트 및 스트리밍 순환 상태 전이 방식(청크마다 은닉 상태를 초기화하는 <code>Chunk-Reset</code> vs 이전 청크 상태를 이어받는 <code>Carry-Over</code>)에 가변 채널 드롭아웃을 적용해 학습하고, 검증 세트에서 임계값과 최고 체크포인트를 정합니다. 본 평가셋 채점은 4번 <code>benchmark.ipynb</code>가 이 학습 결과를 읽어 <code>M = 4 → 3 → 2 → 1</code>별로 합니다.
                   </p>
                 </div>
                 <div class="colab-card-foot">
@@ -2063,18 +2063,18 @@ tr.group-row td {
               <div class="colab-card" role="listitem">
                 <div>
                   <div class="colab-card-head">
-                    <h4>4. Track B · VibeVoice-ASR 화자 구분 참고 행</h4>
-                    <a class="colab-badge-link" href="https://colab.research.google.com/github/hd1534/variable-channel-spatial-asr/blob/main/notebooks/track_b_vibevoice.ipynb" target="_blank" rel="noopener" aria-label="track_b_vibevoice.ipynb Open in Colab">
+                    <h4>4. 본 평가 벤치마크 · Track B 포함</h4>
+                    <a class="colab-badge-link" href="https://colab.research.google.com/github/hd1534/variable-channel-spatial-asr/blob/main/notebooks/benchmark.ipynb" target="_blank" rel="noopener" aria-label="benchmark.ipynb Open in Colab">
                       <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab">
                     </a>
                   </div>
                   <p style="margin-block-start: 0.45rem;">
-                    Colab에서 <code>mono_baselines.py</code>가 <code>microsoft/VibeVoice-ASR</code>로 <code>eval-t2</code>·<code>eval-t2-static</code>의 세션마다 화자 구분 전사를 만들고 바로 채점해, 결과를 Drive의 <code>mono_baselines/vibevoice/score.json</code>에 남깁니다. 노트북이 이 점수를 출력하며, <code>track_b.py</code> 명령행은 이미 있는 전사(<code>segments.jsonl</code>)를 다시 채점할 때만 씁니다.
+                    학습한 시스템 6종을 <code>eval-t2</code>·<code>eval-t2-static</code>에서 같은 전사기(<code>Qwen3-ASR-1.7B</code>, <code>wav2vec2</code>)로 채점하고, 최신 단일채널 비교군(Nemotron, VibeVoice, MOSS)도 같은 채점기로 잽니다. Track B만 돌릴 때는 <code>SYSTEMS="track_b"</code>를 고릅니다. 이때 <code>mono_baselines.py</code>가 <code>microsoft/VibeVoice-ASR</code>로 <code>eval-t2</code>·<code>eval-t2-static</code>의 세션마다 화자 구분 전사를 만들고 바로 채점해, 결과를 Drive의 <code>mono_baselines/vibevoice/score.json</code>에 남깁니다. 노트북이 이 점수를 출력하며, <code>track_b.py</code> 명령행은 이미 있는 전사(<code>segments.jsonl</code>)를 다시 채점할 때만 씁니다.
                   </p>
                 </div>
                 <div class="colab-card-foot">
-                  <span class="mono">notebooks/track_b_vibevoice.ipynb</span>
-                  <span class="badge">A100 · L4 (bf16)</span>
+                  <span class="mono">notebooks/benchmark.ipynb</span>
+                  <span class="badge">GPU · 단일채널 비교군은 A100 · L4</span>
                 </div>
               </div>
             </div>
@@ -2394,7 +2394,7 @@ tr.group-row td {
           <div class="subtopic-block">
             <h3 id="lb-main" class="subtopic-h3" data-subtopic="6.1 다화자 본 평가 리더보드 (eval-t2 · 200세션)"><span class="sub-num">6.1</span>다화자 본 평가 리더보드 — 이동 발화 + 확산 잡음 (<code>eval-t2</code>, 200세션 × 6종 마스크 = 1,200케이스)</h3>
             <p>
-              화자가 발화 턴마다 위치를 옮기고 실내 잔향 및 등방성 확산 잡음(SNR 5~20 dB)이 존재하는 <code>eval-t2</code> 본 평가셋에서의 실측 및 벤치마크 결과입니다. 현재 무학습 통제 베이스라인 3종(<code>Voice-only</code>, <code>Space-only</code>, <code>Naive fusion</code>)의 화자 귀속 정확도(<code>Spk Acc</code>) 실측이 완료되었으며, <code>M = 4</code>에서는 공간 전용(<code>0.878</code>)이 음색 전용(<code>0.833</code>)보다 높지만 <code>M = 2</code>(<code>0.803</code>)에서는 음색 전용보다 낮아집니다. 이 무학습 값들은 임계값을 평가셋에서 고른 낙관적 값입니다. 학습 모델(<code>4a/4b Ours</code>)은 <code>train_template.ipynb</code>로 학습한 뒤 <code>eval_t2.py</code>로, Track B는 <code>track_b_vibevoice.ipynb</code>와 <code>track_b.py</code>로 측정합니다. 종단간 <code>cpWER</code>은 모든 통제 행이 같은 고정 ASR로 예측 화자 구간마다 전사해 채점하며, Track A는 아직 구현 전입니다.
+              화자가 발화 턴마다 위치를 옮기고 실내 잔향 및 등방성 확산 잡음(SNR 5~20 dB)이 존재하는 <code>eval-t2</code> 본 평가셋에서의 실측 및 벤치마크 결과입니다. 현재 무학습 통제 베이스라인 3종(<code>Voice-only</code>, <code>Space-only</code>, <code>Naive fusion</code>)의 화자 귀속 정확도(<code>Spk Acc</code>) 실측이 완료되었으며, <code>M = 4</code>에서는 공간 전용(<code>0.878</code>)이 음색 전용(<code>0.833</code>)보다 높지만 <code>M = 2</code>(<code>0.803</code>)에서는 음색 전용보다 낮아집니다. 이 무학습 값들은 임계값을 평가셋에서 고른 낙관적 값입니다. 학습 모델(<code>4a/4b Ours</code>)은 <code>train_template.ipynb</code>로 학습한 뒤 <code>eval_t2.py</code>로, 모든 행의 본 평가 채점은 <code>benchmark.ipynb</code>가 하며, Track B는 같은 노트북의 <code>SYSTEMS="track_b"</code>와 <code>track_b.py</code>로 측정합니다. 종단간 <code>cpWER</code>은 모든 통제 행이 같은 고정 ASR로 예측 화자 구간마다 전사해 채점하며, Track A는 아직 구현 전입니다.
             </p>
             <div tabindex="0" role="region" aria-labelledby="cap-question" class="table-wrap">
               <table id="lb-main-table" style="min-inline-size: 54rem;">
@@ -2754,8 +2754,8 @@ tr.group-row td {
                   </tr>
                   <tr>
                     <th scope="row">Track B · <code>microsoft/VibeVoice-ASR</code></th>
-                    <td><code>Apache-2.0</code></td>
-                    <td>화자 구분 파운데이션 ASR 참고 행 추론과 채점 (<code>notebooks/track_b_vibevoice.ipynb</code>, <code>track_b.py</code>)</td>
+                    <td><code>MIT</code></td>
+                    <td>화자 구분 파운데이션 ASR 참고 행 추론과 채점 (<code>notebooks/benchmark.ipynb</code>, <code>track_b.py</code>)</td>
                   </tr>
                   <tr>
                     <th scope="row"><code>speechbrain/spkrec-ecapa-voxceleb</code></th>

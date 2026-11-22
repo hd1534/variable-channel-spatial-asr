@@ -9,9 +9,9 @@ with M except through which microphone it hears (the lowest active one, like
 every other row).
 
 Input: JSONL with one row per ``(set, session_id, channel)`` and a
-``segments`` list.  The notebooks (``notebooks/mono_baselines.ipynb`` and the
-VibeVoice preset ``notebooks/track_b_vibevoice.ipynb``) do not hand such a file
-to this script: they run ``mono_baselines.py``, which writes
+``segments`` list.  The benchmark notebook (``notebooks/benchmark.ipynb``,
+``SYSTEMS="mono"`` or ``"track_b"``) does not hand such a file to this script:
+it runs ``mono_baselines.py``, which writes
 ``mono_baselines/<run>/segments.jsonl``, scores it with :func:`score_segments`
 and writes ``mono_baselines/<run>/score.json`` itself.  The command line only
 rescores an existing segments file::

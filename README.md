@@ -1,6 +1,17 @@
 # VC-SASR — Variable-Channel Spatial ASR Benchmark
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hd1534/variable-channel-spatial-asr/blob/main/notebooks/reproduce.ipynb)
+## Colab 바로가기
+
+| 노트북 | 하는 일 | 런타임 |
+|---|---|---|
+| [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hd1534/variable-channel-spatial-asr/blob/main/notebooks/train_template.ipynb) [`train_template.ipynb`](notebooks/train_template.ipynb) | 학습·검증: 비교군 3종의 임계값과 제안 모델 3종의 학습, 최고 체크포인트 선택 (`CONFIG="all"`) | GPU (T4 가능, A100 권장) |
+| [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hd1534/variable-channel-spatial-asr/blob/main/notebooks/benchmark.ipynb) [`benchmark.ipynb`](notebooks/benchmark.ipynb) | 본 평가: 학습한 시스템 6종을 두 평가셋에서 Qwen3-ASR-1.7B·wav2vec2로 채점하고, 최신 단일채널 비교군(Nemotron, VibeVoice, MOSS)과 Track B(`SYSTEMS="track_b"`)도 같은 채점기로 잰다 (`SYSTEMS="all"`) | GPU. 단일채널 비교군은 A100 |
+| [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hd1534/variable-channel-spatial-asr/blob/main/notebooks/reproduce.ipynb) [`reproduce.ipynb`](notebooks/reproduce.ipynb) | 사전 측정(단일 화자) Baseline 2 추론·채점 재현 | CPU |
+
+GPU 노트북은 개인 Drive 인증(`DRIVE_AUTH`)이 필요하다. [개인 Drive 설정 가이드](docs/personal-drive.md)를 먼저 따른다.
+본 평가의 고정 조건(평가셋, 전사기, 화자 임베딩, 채점 규칙, 비교 시스템)과 결과 표는 [BENCHMARK.md](BENCHMARK.md)에 모아 두었다.
+
+---
 
 **마이크가 늘어날 때 공간 정보가 음성인식의 화자 구분을 돕는지 검증하는 가변 채널 벤치마크.** 연구 질문은 "마이크의 개수가 늘어난다면, 공간적 특성을 활용하여 기존 ASR의 화자 구분 능력이 향상될까?"이다. 1\~4개 동기 마이크 입력을 단일 가중치로 처리하는 것을 전제로 하며, 실행 시점에 활성 마이크 수가 달라지더라도 별도의 채널별 체크포인트로 교체하지 않고 하나의 모델로 처리한다.
 
@@ -13,7 +24,7 @@
 - **본 평가 (2인)**: 같은 방 서로 다른 위치의 두 화자가 번갈아 말하는 조건에서 공간 단서가 화자 구분을 개선하는지 검증한다. 주 지표는 `cpWER`·`Spk Acc`다. 평가셋은 `make_eval_t2.py`로 만든다.
 - **사전 측정 (단일 화자, 측정 완료)**: 화자가 한 명인 조건에서 마이크 수별로 얻을 수 있는 공간 정보의 양을 잰다. 지금 저장소에 있는 평가셋(`eval-dev` 144세션 · 864케이스)과 실측 결과는 모두 사전 측정이다.
 
-방위각 36-bin·거리 8-bin 확률 분포와 대표 위치는 현재 채점 계약(`spec.py` v0.2.0)에서 선택 출력이다. 제출하면 NLL·90% HPD 구간·위치 오차로 채점해 채널 수에 따라 달라지는 방향 불확실성(예: `M = 2`의 앞뒤 두 봉우리)을 진단하지만, 화자 구분 주 지표 계산에는 들어가지 않는다. 거리는 목표가 아니다. 사전 측정셋 144세션의 RIR에서는 거리에 따른 수신 레벨 변화(거리 2배당 약 −1.8 dB)가 방마다 다른 잔향 편차(약 5.8 dB)에 묻히므로, 거리 수치는 사전 측정의 진단값으로만 읽는다.
+방위각 36-bin·거리 8-bin 확률 분포와 대표 위치는 현재 채점 계약(`spec.py` v0.3.0)에서 선택 출력이다. 제출하면 NLL·90% HPD 구간·위치 오차로 채점해 채널 수에 따라 달라지는 방향 불확실성(예: `M = 2`의 앞뒤 두 봉우리)을 진단하지만, 화자 구분 주 지표 계산에는 들어가지 않는다. 거리는 목표가 아니다. 사전 측정셋 144세션의 RIR에서는 거리에 따른 수신 레벨 변화(거리 2배당 약 −1.8 dB)가 방마다 다른 잔향 편차(약 5.8 dB)에 묻히므로, 거리 수치는 사전 측정의 진단값으로만 읽는다.
 
 ---
 
@@ -25,7 +36,7 @@
 
 | 항목 | 상태 |
 |---|---|
-| 평가 계약 `spec.py` (`SPEC_VERSION 0.2.0`) | 완료 — doctest 및 자체 정합성 검사 통과. 세션당 화자를 최대 2명까지 채점한다(`MAX_SPEAKERS_PER_TRACK`) |
+| 평가 계약 `spec.py` (`SPEC_VERSION 0.3.0`) | 완료 — doctest 및 자체 정합성 검사 통과. 세션당 화자를 최대 2명까지 채점한다(`MAX_SPEAKERS_PER_TRACK`) |
 | 공식 평가기 `evaluate.py` | 완료 — 다화자 `cpWER`·화자 순열 매칭 포함, CLI 플래그 `--pred / --gt / --track / --out` |
 | 세션 설계·합성 라이브러리 `simulate.py` | 완료 — 실내 음향 합성 및 설계 불변식 자체 점검 |
 | 사전 측정 평가셋 생성기 `make_eval_dev.py` | 완료 — 같은 시드로 다시 만든 오디오·정답·메타가 커밋된 세트와 바이트 단위로 같았다 |
@@ -129,7 +140,7 @@ make eval-dev-check    # data/eval-dev-rebuild 의 오디오·정답·메타를 
 
 ### 화자 구분 시스템 학습 (본 평가 준비)
 
-비교 사다리의 네 시스템을 같은 학습·검증 코드로 돌린다. 모델 구조는 `models/`(시스템마다 파일 하나), 학습 방법은 `training/`, 시스템별 설정은 `configs/<이름>.json`에 있다. Colab에서는 `notebooks/train_template.ipynb` 하나가 이 코드를 불러 실행하며, 시스템을 바꿀 때는 노트북을 복사하지 않고 맨 위 `CONFIG`만 바꾼다.
+비교 사다리의 네 시스템을 같은 학습·검증 코드로 돌린다. 모델 구조는 `models/`(시스템마다 파일 하나), 학습 방법은 `training/`, 시스템별 설정은 `configs/<이름>.json`에 있다. Colab에서는 `notebooks/train_template.ipynb` 하나가 이 코드를 불러 학습·검증하며, 시스템을 바꿀 때는 노트북을 복사하지 않고 맨 위 `CONFIG`만 바꾼다. 본 평가셋 채점은 `notebooks/benchmark.ipynb`가 학습 결과(`runs/<실행>`)를 읽어 따로 한다.
 
 | 설정 | 시스템 | 학습 |
 |---|---|---|
@@ -181,11 +192,11 @@ make train TRAIN_CONFIG=configs/voice_only.json TRAIN_DATA=<LibriSpeech/ 를 담
 
 **Colab에서**: 개인 Drive 인증을 한 번 준비한 뒤 노트북의 `CONFIG`를 선택한다. 저장소 기본값은 아래의 공식 Drive API 연결이다. 노트북은 다음을 처리한다.
 
-- 학습 환경은 Colab의 `torch`를 사용하고 `speechbrain`을 설치한다. 최신 ASR은 별도 venv에서 실행한다.
+- 학습 환경은 Colab의 `torch`를 사용하고 `speechbrain`을 설치한다. 전사기(최신 ASR)는 학습 노트북에서 쓰지 않고, `benchmark.ipynb`가 별도 venv에서 실행한다.
 - LibriSpeech·RIR·체크포인트를 로컬 작업 경로에 기록하고 개인 Drive로 백업한다.
 - 재접속하면 마지막 완료 백업을 검증해 복원하고, 완성된 RIR 조각과 학습 체크포인트를 재사용한다.
 - 백업 실패는 명시적인 오류로 처리하며, 실패 후 새 학습을 계속 진행하지 않는다. 연결 셀이 실패해 백업 세션이 없으면 이후 명령도 백업 없이 실행하지 않고 오류로 멈춘다.
-- `OVERRIDES`로 `train.max_steps`를 바꾸면 제안 모델의 실행 이름에 `-steps<N>`을 붙인다(`runs/proposed_carry-steps2000/`). 짧은 시간 측정용 실행이 본 학습과 같은 실행 디렉터리를 쓰지 않는다. 무학습 비교군의 이름은 바뀌지 않는다.
+- `OVERRIDES`로 `train.max_steps`를 바꾸면 제안 모델의 실행 이름에 `-steps<N>`을 붙인다(`runs/proposed_carry-steps2000/`). 짧은 시간 측정용 실행이 본 학습과 같은 실행 디렉터리를 쓰지 않는다. 무학습 비교군의 이름은 바뀌지 않는다. 이름에 꼬리표(`-devclean`, `-<RUN_TAG>`, `-steps<N>`)가 붙은 실행을 채점하려면 `benchmark.ipynb`의 `RUN_SUFFIX`에 같은 꼬리표를 넣는다.
 
 ### 학교 Pro+와 개인 계정 Drive 연결
 
@@ -240,9 +251,8 @@ GPU 시간을 두 번 쓰고, 한쪽 결과는 최신 버전에서 빠진다.
 노트북의 `RESTORE_SKIP`은 복원·동기화 때 VM으로 내려받지 않을 경로 접두어 목록이다.
 건너뛴 파일은 그 런타임에 받지 않을 뿐 백업에는 그대로 남는다. 기본값은 노트북마다 다르다.
 
-- `train_template.ipynb`: mono 비교군 전용 가중치(Nemotron, VibeVoice, MOSS, VibeVoice 토크나이저 `Qwen/Qwen2.5-7B`)
-- `mono_baselines.ipynb`: `cache`, `rirbanks`, `runs`, `models/ecapa`, wav2vec2 가중치
-- `track_b_vibevoice.ipynb`: `mono_baselines.ipynb`의 기본값과 Nemotron·MOSS·Qwen3-ASR-1.7B 가중치
+- `train_template.ipynb`: 본 평가 결과(`eval`, `mono_baselines`), 전사 캐시(`asr_cache`), 전사기와 단일채널 비교군 가중치(Qwen3-ASR-1.7B, wav2vec2, Nemotron, VibeVoice, MOSS, VibeVoice 토크나이저 `Qwen/Qwen2.5-7B`)
+- `benchmark.ipynb`: `cache`, `rirbanks`, 학습 재개용 체크포인트(`runs/<실행>/ckpt`), 고르지 않은 시스템만 쓰는 가중치. 우리 시스템을 고르지 않으면 `runs`와 `models/ecapa`도 건너뛴다
 
 가중치 경로는 `drive_storage.model_cache_dirs`가 `models/asr/`와 `models/huggingface/` 아래 모델 폴더로 만든다.
 
@@ -284,7 +294,7 @@ export는 백업을 읽기만 하고 게시하지 않는다. 같은 폴더로 �
 
 ### 최신 ASR와 단일채널 화자 구분 비교
 
-`notebooks/train_template.ipynb`의 기본값은 `ASR="all"`이다. 시스템마다 **Qwen3-ASR-1.7B**(`qwen3-1.7b`)와
+`notebooks/benchmark.ipynb`의 기본값은 `ASR="all"`이다. 시스템마다 **Qwen3-ASR-1.7B**(`qwen3-1.7b`)와
 이전 전사 백엔드인 `wav2vec2`로 각각 전사·채점하고, 결과를 `eval/<RUN_NAME>-qwen3-1.7b/`와
 `eval/<RUN_NAME>-wav2vec2/`에 따로 둔다. 화자 임베딩은 시스템마다 한 번만 계산해 두 폴더가 함께 쓴다.
 하나만 돌리려면 `ASR="qwen3-1.7b"` 또는 `ASR="wav2vec2"`를 고른다.
@@ -293,7 +303,7 @@ export는 백업을 읽기만 하고 게시하지 않는다. 같은 폴더로 �
 ASR 교체는 화자 모델을 재학습하지 않고 임베딩·체크포인트를 재사용해 전사와 점수만 갱신한다.
 기존에 기록한 wav2vec2 수치와 새 Qwen 수치는 백엔드를 명시해 구분한다.
 
-최신 단일채널 비교는 `notebooks/mono_baselines.ipynb`에서 다음 세 가지를 실행한다.
+최신 단일채널 비교는 같은 `notebooks/benchmark.ipynb`에서 다음 세 가지를 실행한다(`SYSTEMS="mono"`, 기본값 `all`에도 들어 있다).
 
 | 비교군 | 화자 구분 | 전사 | 실제 입력 |
 |---|---|---|---|
@@ -301,8 +311,8 @@ ASR 교체는 화자 모델을 재학습하지 않고 임베딩·체크포인트
 | VibeVoice | [Microsoft VibeVoice-ASR 9B](https://huggingface.co/microsoft/VibeVoice-ASR) | 모델 자체 전사 | 1ch |
 | MOSS | [OpenMOSS MOSS-Transcribe-Diarize 0.9B](https://github.com/OpenMOSS/MOSS-Transcribe-Diarize) | 모델 자체 전사 | 1ch |
 
-먼저 `LIMIT=2`로 GPU 추론·재개·채점을 확인한 뒤 `LIMIT=0`으로 전체 평가한다.
-VibeVoice 전용 기존 진입점 `notebooks/track_b_vibevoice.ipynb`도 같은 실행기를 사용한다.
+`MONO_LIMIT=2`로 두면 세션 두 개로 GPU 추론·재개·채점만 먼저 확인하고, 기본값 `0`이면 전체를 평가한다(끝난 세션은 건너뛴다).
+Track B(VibeVoice-ASR)만 돌리려면 `SYSTEMS="track_b"`를 고른다.
 전체 비교군 실행에는 A100을 권장한다. VibeVoice는 가중치만 약 18GB이므로 T4용 설정이 아니다.
 공통 Qwen은 CUDA GPU 종류가 바뀌어도 전사 조건을 유지하도록 FP16을 사용한다. VibeVoice/MOSS는
 Ampere 이상에서 BF16을 선택한다. 실제 VRAM·속도와 모델 설치는 Colab에서 확인해야 한다.
@@ -601,6 +611,7 @@ Source: https://www.openslr.org/12
 
 ```text
 spec.py                      동결된 평가 계약 상수 및 스키마 정의 (수치·필드명의 단일 출처)
+BENCHMARK.md                 본 평가 고정 조건(평가셋·전사기·임베딩·채점·비교 시스템)과 결과 표
 SPEC_DECISIONS.md            기획안 v1.7의 미정 항목을 spec.py에서 확정한 근거와 파급 범위
 evaluate.py                  공식 채점기 (--pred / --gt / --track / --out)
 simulate.py                  실내 음향 시뮬레이션 및 층화 설계 라이브러리 (--self-test 지원)
@@ -643,8 +654,7 @@ compare_asr.py               채널·관측 범위·평가 표본을 명시한 �
 tests/test_modern_asr.py     모델 API 어댑터·캐시 무결성·합성 오디오 종단 평가 테스트
 notebooks/reproduce.ipynb    Baseline 2 추론·채점을 무료 CPU 런타임에서 재현하는 Colab 노트북
 notebooks/train_template.ipynb  화자 구분 시스템을 Colab GPU 에서 학습·검증하는 템플릿 노트북 (CONFIG 하나만 바꾼다)
-notebooks/mono_baselines.ipynb  최신 단일채널 비교군 3종의 Colab 추론·채점
-notebooks/track_b_vibevoice.ipynb  같은 실행기의 VibeVoice 전용 프리셋
+notebooks/benchmark.ipynb    본 평가 노트북: 학습한 시스템 6종과 최신 단일채널 비교군 3종(Track B 포함)을 같은 채점기로 채점
 tools_make_demo_audio.py     웹페이지 6.2절 데모 오디오(단일 채널 · 정답 방위로 조향한 4채널)를 자르는 스크립트
 docs/index.html              GitHub Pages 배포용 벤치마크 웹페이지 (제출 HTML과 동일 본)
 docs/personal-drive.md       개인 Drive OAuth 설정, 복원·여러 런타임·가져오기·내보내기 가이드
