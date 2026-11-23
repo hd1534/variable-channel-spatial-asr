@@ -417,6 +417,26 @@ class TestSnapshots(StoreCase):
         finally:
             session.close()
 
+    def test_periodic_progress_only_backups_are_summarised_not_listed(self) -> None:
+        """A metrics.jsonl append every two minutes is backed up silently; a checkpoint is named."""
+        lines: list[str] = []
+        self.store.log = lines.append
+        self.put("runs/r/metrics.jsonl", b'{"step": 1}\n')
+        self.store.backup(quiet=True)
+        self.put("runs/r/metrics.jsonl", b'{"step": 1}\n{"step": 2}\n')
+        self.store.backup(quiet=True)
+        self.assertEqual(lines, [])
+        self.assertEqual(self.store.quiet_commits, 2)
+        self.assertEqual((self.restore_copy() / "runs/r/metrics.jsonl").read_bytes(), b'{"step": 1}\n{"step": 2}\n')
+        self.put("runs/r/ckpt/step_500.pt", b"weights")
+        self.store.backup(quiet=True)
+        self.assertEqual(len(lines), 1)
+        self.assertIn("changed: runs/r/ckpt/step_500.pt", lines[0])
+        self.store.quiet_interval_sec = 0.0
+        self.put("runs/r/metrics.jsonl", b"more\n")
+        self.store.backup(quiet=True)
+        self.assertIn("1 progress-only backups", lines[-1])
+
     def test_flush_reports_an_up_to_date_backup(self) -> None:
         """The final notebook flush says so even when the previous command already backed everything up."""
         lines: list[str] = []

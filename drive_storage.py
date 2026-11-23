@@ -54,6 +54,9 @@ GROUP_DEPTH: tuple[tuple[str, int], ...] = (("mono_baselines/runtimes/", 3), ("m
 # A transcript cache folder (<ASR_CACHE_NAME>/<backend>.jsonl, <backend>.inputs.json, qwen-runtime.json) is one unit.
 CACHE_NAME: re.Pattern[str] = re.compile(r"[^/]+(?:\.jsonl|\.inputs\.json|-runtime\.json)\Z")
 FREE_SPACE_MARGIN: int = 512 * 1024 * 1024
+PROGRESS_FILES: frozenset[str] = frozenset({"metrics.jsonl"})
+"""Files a running job appends to every few seconds.  A periodic backup that only moved these is
+not logged one by one (:attr:`SnapshotStore.quiet_interval_sec` summarises them instead)."""
 UNCONFIRMED: str = "unconfirmed-commit.json"  # a manifest whose upload started but was not confirmed (write-ahead)
 LOCK_MESSAGE: str = ("another backup session is already using this LOCAL_STORE_ROOT; "
                      "run storage.flush() in the notebook instead, or stop that session first")
@@ -642,6 +645,10 @@ class SnapshotStore:
         """Load (or migrate) local state; nothing is contacted until restore/sync/backup."""
         self.root: Path = root.resolve()
         self.transport: BackupTransport = transport
+        self.quiet_interval_sec: float = 1800.0
+        """How often the periodic backup reports the progress-only commits it did not log one by one."""
+        self.quiet_commits: int = 0
+        self.quiet_since: float = time.monotonic()
         self.log: Callable[[str], None] = log
         self.state_dir: Path = _state_dir(self.root)
         self.state_dir.mkdir(parents=True, exist_ok=True)
@@ -1252,8 +1259,12 @@ class SnapshotStore:
         return candidate, local
 
     def _publish(self, files: dict[str, dict[str, Any]], parents: Sequence[str], local: dict[str, dict[str, Any]],
-                 message: str, stamps: Stamps) -> str:
-        """Upload one manifest after its objects and adopt it as the synced view."""
+                 message: str, stamps: Stamps, *, quiet: bool = False) -> str:
+        """Upload one manifest after its objects and adopt it as the synced view.
+
+        ``quiet`` (the periodic backup): a commit that only moved progress logs is counted, not logged.
+        """
+        before = self.files
         identifier = uuid.uuid4().hex
         parents = sorted(set(parents))
         document = {"schema": SCHEMA, "id": identifier, "parents": parents, "writer": self.writer,
@@ -1272,7 +1283,19 @@ class SnapshotStore:
         pending.unlink(missing_ok=True)
         for group in held:
             self.log(f"[storage] imported {group}; left out of the backup because incomplete: {', '.join(held[group])}")
-        self.log(f"[storage] {message}: {len(files)} files (commit {identifier[:8]})")
+        changed = sorted(p for p in set(files) | set(before) if _content(files.get(p)) != _content(before.get(p)))
+        notable = [p for p in changed if PurePosixPath(p).name not in PROGRESS_FILES]
+        if quiet and not notable:
+            self.quiet_commits += 1
+            if time.monotonic() - self.quiet_since >= self.quiet_interval_sec:
+                self.log(f"[storage] {self.quiet_commits} progress-only backups since the last report "
+                         f"(latest commit {identifier[:8]}, {len(files)} files)")
+                self.quiet_commits, self.quiet_since = 0, time.monotonic()
+            return identifier
+        shown = ", ".join(notable[:3]) + (f" and {len(notable) - 3} more" if len(notable) > 3 else "")
+        detail = f"; changed: {shown}" if notable else ""
+        self.log(f"[storage] {message}: {len(files)} files (commit {identifier[:8]}){detail}")
+        self.quiet_commits, self.quiet_since = 0, time.monotonic()
         return identifier
 
     def _landed_imports(self, files: dict[str, dict[str, Any]]) -> tuple[list[str], dict[str, list[str]]]:
@@ -1297,8 +1320,10 @@ class SnapshotStore:
         if self.mode == "export":
             raise StorageError("this folder is an export; back up from the notebook workspace instead")
 
-    def backup(self, *, include_static: bool = True, force: bool = False) -> str | None:
-        """Commit this workspace's own changes on its own chain; never blocked by other runtimes."""
+    def backup(self, *, include_static: bool = True, force: bool = False, quiet: bool = False) -> str | None:
+        """Commit this workspace's own changes on its own chain; never blocked by other runtimes.
+
+        ``quiet``: do not log a commit that only moved progress logs (:data:`PROGRESS_FILES`)."""
         self._writable()
         self._confirm_unconfirmed()
         candidate, local = self._scan(include_static)
@@ -1308,7 +1333,7 @@ class SnapshotStore:
                 self._save()
             return self.heads[0] if len(self.heads) == 1 else None
         return self._publish(candidate, self.heads, local, "backup complete",
-                             _restamp(self.files, self.stamps, candidate))
+                             _restamp(self.files, self.stamps, candidate), quiet=quiet)
 
     def sync(self) -> int:
         """Commit local work, merge every other history into this one, and update local files."""
@@ -1586,7 +1611,7 @@ class StorageSession:
                 with self.lock:
                     if self.closed:
                         return
-                    self.store.backup(include_static=False)
+                    self.store.backup(include_static=False, quiet=True)
             except Exception as exc:
                 self.error = exc
                 self.store.log(f"[storage] BACKUP FAILED: {exc}")
