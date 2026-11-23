@@ -4,7 +4,7 @@
 
 | 노트북 | 하는 일 | 런타임 |
 |---|---|---|
-| [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hd1534/variable-channel-spatial-asr/blob/main/notebooks/train_template.ipynb) [`train_template.ipynb`](notebooks/train_template.ipynb) | 학습·검증: 비교군 3종의 임계값과 제안 모델 3종의 학습, 최고 체크포인트 선택 (`CONFIG="all"`) | GPU (T4 가능, A100 권장) |
+| [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hd1534/variable-channel-spatial-asr/blob/main/notebooks/train_template.ipynb) [`train_template.ipynb`](notebooks/train_template.ipynb) | 학습·검증: 비교군 3종의 임계값과 제안 모델 3종·Track A 2종의 학습, 최고 체크포인트 선택 (`CONFIG="all"`) | GPU (T4 가능, A100 권장) |
 | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hd1534/variable-channel-spatial-asr/blob/main/notebooks/benchmark.ipynb) [`benchmark.ipynb`](notebooks/benchmark.ipynb) | 본 평가: 학습한 시스템 6종을 두 평가셋에서 Qwen3-ASR-1.7B·wav2vec2로 채점하고, 최신 단일채널 비교군(Nemotron, VibeVoice, MOSS)과 Track B(`SYSTEMS="track_b"`)도 같은 채점기로 잰다 (`SYSTEMS="all"`) | GPU. 단일채널 비교군은 A100 |
 | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hd1534/variable-channel-spatial-asr/blob/main/notebooks/track_c.ipynb) [`track_c.ipynb`](notebooks/track_c.ipynb) | Track C(공간 통합 ASR): Qwen3-ASR-1.7B + 마이크 쌍 공간 어댑터 + LoRA. 단어 정렬, 학습·검증, 본 평가 채점을 한 노트북에서 ([설계](docs/unified-asr-design.md)) | GPU (A100 권장) |
 | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hd1534/variable-channel-spatial-asr/blob/main/notebooks/reproduce.ipynb) [`reproduce.ipynb`](notebooks/reproduce.ipynb) | 사전 측정(단일 화자) Baseline 2 추론·채점 재현 | CPU |
@@ -149,7 +149,7 @@ make eval-dev-check    # data/eval-dev-rebuild 의 오디오·정답·메타를 
 | `space_only` | 청크마다 Baseline 2와 같은 함수(`srp_phat_response`, `response_to_distribution`)로 만든 36구간 방위 분포, 같은 슬롯 매칭 | 없음 (임계값) |
 | `naive_fusion` | 두 유사도를 마이크 수별 고정 가중치로 더한다 | 없음 (가중치와 임계값) |
 | `proposed_carry`, `proposed_reset` | TAC 공간 경로 + 동결 ECAPA + 2층 인과 GRU, 시점마다 두 단서의 비중을 게이트로 정한다 | 학습 |
-| `track_a`, `track_a_spatial` | Track A: 사전학습 모델 없이 Log-Mel + 마이크 쌍 GCC-PHAT(`_spatial`은 GCC-PHAT만)로 처음부터 학습하는 경량 Conformer. 한 가중치로 인과 모드와 전체 문맥 모드를 함께 학습한다([설계](docs/track-a-design.md)). 노트북 `CONFIG="all_track_a"` | 학습 |
+| `track_a`, `track_a_spatial` | Track A: 사전학습 모델 없이 Log-Mel + 마이크 쌍 GCC-PHAT(`_spatial`은 GCC-PHAT만)로 처음부터 학습하는 경량 Conformer. 한 가중치로 인과 모드와 전체 문맥 모드를 함께 학습한다([설계](docs/track-a-design.md)). 노트북 `CONFIG="all"`에 포함(따로 돌릴 때는 `"all_track_a"`) | 학습 |
 | `smoke` | 가짜 음성·간이 RIR·대체 인코더로 학습 경로 전체를 점검한다 (`smoke_track_a`는 Track A용) | 학습 (숫자는 의미 없다) |
 | `smoke_real` | 실제 ECAPA·`pyroomacoustics`·실제 크기 모델로 30걸음 (dev-clean만). Colab GPU에서 처음 한 번 돌리는 점검용 | 학습 (숫자는 의미 없다) |
 

@@ -73,7 +73,7 @@ GCC 쌍(4×33+2) ─ Linear ─ 쌍 TAC ×2 ─ 활성 쌍 평균 ┘
   - 위치 손실은 공간 임베딩을 내는 모델에만 건다.
   - Track A는 ECAPA를 불러오지 않는다(`needs_voice`).
 - **평가**: `eval_t2.py`의 Track A 변형은 `full`(causal)과 `full_context`(`full_audio`, M별 채점) 두 가지다.
-- **노트북**: `train_template`에 `all_track_a` 프리셋을 추가했다. `all`에는 넣지 않아서 다른 런타임에서 따로 학습할 수 있다. `benchmark`의 `ours`와 `all_track_a`에도 들어 있다.
+- **노트북**: `train_template`의 `all`에 Track A 2종이 들어 있다. 다른 런타임에서 따로 학습할 때는 `all_track_a` 프리셋을 쓴다. `benchmark`의 `ours`와 `all_track_a`에도 들어 있다.
 
 ## 8. 확인한 것과 남은 것
 
