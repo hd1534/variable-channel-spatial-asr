@@ -87,6 +87,22 @@ def causal_vad(signal, rel_db: float = -30.0, floor_dbfs: float = -60.0):  # noq
     return (db > floor_dbfs) & (db > running + rel_db)
 
 
+def window_ahead(speech):  # noqa: ANN001, ANN201
+    """Causal speech flags ``[B, 80]`` moved to the official window ``[t_k, t_k + 0.25)``.
+
+    For a full-context system: flag ``k`` becomes the causal flag of ``t_{k+1}``,
+    whose window is exactly that one.  The last instant has no successor and
+    keeps its own flag.
+
+    >>> import torch
+    >>> window_ahead(torch.tensor([[False, True, True, False]])).tolist()
+    [[True, True, False, False]]
+    """
+    import torch
+
+    return torch.cat([speech[:, 1:], speech[:, -1:]], dim=1)
+
+
 def chunk_frame_ranges(n_fft: int, hop: int) -> list[tuple[int, int]]:
     """``[(first, last)]`` frame indices inside chunk ``k`` (``last = -1``: none).
 

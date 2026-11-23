@@ -148,7 +148,8 @@ make eval-dev-check    # data/eval-dev-rebuild 의 오디오·정답·메타를 
 | `space_only` | 청크마다 Baseline 2와 같은 함수(`srp_phat_response`, `response_to_distribution`)로 만든 36구간 방위 분포, 같은 슬롯 매칭 | 없음 (임계값) |
 | `naive_fusion` | 두 유사도를 마이크 수별 고정 가중치로 더한다 | 없음 (가중치와 임계값) |
 | `proposed_carry`, `proposed_reset` | TAC 공간 경로 + 동결 ECAPA + 2층 인과 GRU, 시점마다 두 단서의 비중을 게이트로 정한다 | 학습 |
-| `smoke` | 가짜 음성·간이 RIR·대체 인코더로 학습 경로 전체를 점검한다 | 학습 (숫자는 의미 없다) |
+| `track_a`, `track_a_spatial` | Track A: 사전학습 모델 없이 Log-Mel + 마이크 쌍 GCC-PHAT(`_spatial`은 GCC-PHAT만)로 처음부터 학습하는 경량 Conformer. 한 가중치로 인과 모드와 전체 문맥 모드를 함께 학습한다([설계](docs/track-a-design.md)). 노트북 `CONFIG="all_track_a"` | 학습 |
+| `smoke` | 가짜 음성·간이 RIR·대체 인코더로 학습 경로 전체를 점검한다 (`smoke_track_a`는 Track A용) | 학습 (숫자는 의미 없다) |
 | `smoke_real` | 실제 ECAPA·`pyroomacoustics`·실제 크기 모델로 30걸음 (dev-clean만). Colab GPU에서 처음 한 번 돌리는 점검용 | 학습 (숫자는 의미 없다) |
 
 - **공통 백엔드**: 모든 시스템은 시점마다 단위 벡터 하나를 내고, 같은 온라인 슬롯 매칭(`models/slots.py`)이 화자 슬롯을 붙인다. 그래서 사다리의 차이는 임베딩에 무엇을 넣었는지에서만 나온다. 임계값(단순 결합은 가중치도)은 시스템마다, 마이크 수마다 검증 세트에서 정한다.
@@ -251,10 +252,11 @@ GPU 시간을 두 번 쓰고, 한쪽 결과는 최신 버전에서 빠진다.
 노트북의 `RESTORE_SKIP`은 복원·동기화 때 VM으로 내려받지 않을 경로 접두어 목록이다.
 건너뛴 파일은 그 런타임에 받지 않을 뿐 백업에는 그대로 남는다. 기본값은 노트북마다 다르다.
 
-- `train_template.ipynb`: 본 평가 결과(`eval`, `mono_baselines`), 전사 캐시(`asr_cache`), 전사기와 단일채널 비교군 가중치(Qwen3-ASR-1.7B, wav2vec2, Nemotron, VibeVoice, MOSS, VibeVoice 토크나이저 `Qwen/Qwen2.5-7B`)
-- `benchmark.ipynb`: `cache`, `rirbanks`, 학습 재개용 체크포인트(`runs/<실행>/ckpt`), 고르지 않은 시스템만 쓰는 가중치. 우리 시스템을 고르지 않으면 `runs`와 `models/ecapa`도 건너뛴다
+- `train_template.ipynb`: 본 평가 결과(`eval`, `mono_baselines`), 전사 캐시(`asr_cache`), 공개 모델 가중치(`models/asr`, `models/huggingface`)
+- `benchmark.ipynb`: `cache`, `rirbanks`, 학습 재개용 체크포인트(`runs/<실행>/ckpt`), 공개 모델 가중치(`models/asr`, `models/huggingface`). 우리 시스템을 고르지 않으면 `runs`와 `models/ecapa`도 건너뛴다
 
-가중치 경로는 `drive_storage.model_cache_dirs`가 `models/asr/`와 `models/huggingface/` 아래 모델 폴더로 만든다.
+공개 모델 가중치(Qwen3-ASR, wav2vec2, Nemotron, VibeVoice, MOSS 등)는 revision을 고정했으므로 Hugging Face에서 다시 받아도 같은 파일이다.
+Drive에서 약 25 GB를 복원하는 것보다 Hub에서 받는 쪽이 훨씬 빠르다. 그래서 이 두 경로는 백업하지도 복원하지도 않는다. ECAPA(`models/ecapa`)는 백업하고 복원한다.
 
 학교 Drive의 파일은 자동으로 옮기거나 지우지 않는다. 가져오지 않으면 첫 `drive_api` 실행은 빈 백업에서 시작하므로
 모든 시스템을 처음부터 학습하고 RIR 뱅크와 LibriSpeech 캐시도 새로 만든다. 학교 Drive의 기존 결과를 한 번 가져오려면
@@ -628,10 +630,12 @@ tests/test_evaluate.py       평가 계약 및 채점기 단위 테스트 모음
 tests/test_baselines.py      베이스라인 대표점 규칙 단위 테스트 (11개 테스트)
 tests/test_eval_t2.py        본 평가셋 생성기 테스트 (가짜 음성, 7개 테스트)
 tests/test_training.py       학습 코드 불변식 테스트 (torch 필요, 없으면 건너뛴다)
+tests/test_track_a.py        Track A 인과성·채널 순서 불변·두 모드 학습, 기존 실행 지문 고정, 스모크 학습
 tests/test_training_fixes.py 새 코드로 끝난 실행 재검증, 학습률 일정 기록, 뱅크 버전 보존, 실행 디렉터리 잠금 회귀 테스트
 tests/test_review_regressions.py  학습·평가 잡음 일치, best.pt 프로토콜 이전, ASR별 평가 결과 재사용 회귀 테스트
 models/                      화자 구분 시스템: voice_only · space_only · naive_fusion · proposed(TAC + ECAPA + GRU),
-                             공용 특징(common.py), TAC 블록(tac.py), 공용 온라인 슬롯 매칭(slots.py)
+                             track_a(Log-Mel + GCC-PHAT 경량 Conformer), 공용 특징(common.py), TAC 블록(tac.py),
+                             공용 온라인 슬롯 매칭(slots.py)
 training/                    학습 코드: 설정(config.py), 음성 코퍼스(corpus.py), 방 음향 뱅크(rirbank.py),
                              교대 발화 세션 합성(scenes.py), GPU 위 방 음향 적용(render.py), 학습·검증 데이터(data.py),
                              손실(loss.py), 학습·검증 루프(engine.py), 공식 형식 예측·채점(official.py),

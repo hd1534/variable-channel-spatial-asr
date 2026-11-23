@@ -30,9 +30,14 @@ from typing import Any
 
 import spec
 
-SYSTEM_NAMES: tuple[str, ...] = ("voice_only", "space_only", "naive_fusion", "proposed")
+SYSTEM_NAMES: tuple[str, ...] = ("voice_only", "space_only", "naive_fusion", "proposed", "track_a")
 """The comparison ladder of the page (2.1): two single-cue systems, their
-fixed-weight sum, and the learned fusion."""
+fixed-weight sum, and the learned fusion; plus Track A, the lightweight model
+trained from scratch (:mod:`models.track_a`)."""
+
+TRAINED_SYSTEMS: tuple[str, ...] = ("proposed", "track_a")
+"""Systems with learned weights (``best.pt``); the others only tune thresholds.
+Mirrors ``models.SYSTEMS[name].trainable`` for code that must not import torch."""
 
 STATE_MODES: tuple[str, ...] = ("carry", "reset")
 """Proposed model only: ``carry`` = Carry-Over, ``reset`` = Chunk-Reset."""
@@ -221,12 +226,50 @@ class SlotConfig:
 
 
 @dataclass
+class TrackAConfig:
+    """Track A only (:mod:`models.track_a`).  Kept out of :class:`ModelConfig` so
+    the fingerprints of the other systems' runs do not change: the section is
+    left out of :func:`config_to_dict` unless ``model.name == "track_a"``."""
+
+    use_mel: bool = True
+    """Log-mel of the reference channel as an input.  ``False`` leaves only the
+    microphone-pair GCC-PHAT, the "position only" question of the page; at
+    M = 1 such a model has no input at all."""
+
+    n_mels: int = 80
+    gcc_max_lag: int = 16
+    """GCC-PHAT lags kept on each side, in samples.  The widest pair of the
+    largest array (0.24 m) is ~11.2 samples apart at 16 kHz."""
+
+    n_pair_tac_blocks: int = 2
+    stack: int = 4
+    """STFT frames (10 ms) stacked into one model frame (40 ms)."""
+
+    d_model: int = 144
+    n_layers: int = 4
+    n_heads: int = 4
+    ff_mult: int = 4
+    conv_kernel: int = 15
+    left_context_sec: float = 2.0
+    """How far back causal self-attention looks."""
+
+    d_embed: int = 128
+    dropout: float = 0.1
+    full_context_prob: float = 0.5
+    """Share of training batches run with full (bidirectional) self-attention and
+    labelled on the official window after ``t_k``; the rest are causal.  One set of
+    weights then serves the official causal table and a full-audio reference row,
+    the way dynamic-chunk training lets one ASR model stream or not."""
+
+
+@dataclass
 class RunConfig:
     name: str
     data: DataConfig = field(default_factory=DataConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
     train: TrainConfig = field(default_factory=TrainConfig)
     slots: SlotConfig = field(default_factory=SlotConfig)
+    track_a: TrackAConfig = field(default_factory=TrackAConfig)
 
     def validate(self) -> "RunConfig":
         if self.model.name not in SYSTEM_NAMES:
@@ -245,13 +288,18 @@ class RunConfig:
             raise ValueError("data.m_weights needs one non-negative weight per M = 1..4")
         for mask in self.data.val_masks:
             spec.mask_to_channels(mask)
+        if self.model.name == "track_a":
+            a = self.track_a
+            if a.d_model % a.n_heads or a.stack < 1 or not 0.0 <= a.full_context_prob <= 1.0:
+                raise ValueError("track_a needs d_model divisible by n_heads, stack >= 1 and 0 <= full_context_prob <= 1")
         return self
 
 
 EVAL_SPLIT_SEED: int = 20261029
 """Seed of the committed eval-dev speaker split (``make_eval_dev.py --seed``)."""
 
-_SECTIONS = {"data": DataConfig, "model": ModelConfig, "train": TrainConfig, "slots": SlotConfig}
+_SECTIONS = {"data": DataConfig, "model": ModelConfig, "train": TrainConfig, "slots": SlotConfig,
+             "track_a": TrackAConfig}
 
 
 def _coerce(value: Any, default: Any) -> Any:
@@ -276,7 +324,10 @@ def load_config_dict(raw: dict[str, Any]) -> RunConfig:
             if not hasattr(defaults, k):
                 raise ValueError(f"unknown key {k!r} in section {key!r}")
         sections[key] = cls(**{k: _coerce(v, getattr(defaults, k)) for k, v in given.items()})
-    return RunConfig(name=str(raw["name"]), **sections).validate()
+    cfg = RunConfig(name=str(raw["name"]), **sections)
+    if raw.get("track_a") and cfg.model.name != "track_a":
+        raise ValueError("the 'track_a' section only applies to model.name == 'track_a'")
+    return cfg.validate()
 
 
 def load_config(path: str | Path, overrides: dict[str, Any] | None = None) -> RunConfig:
@@ -291,7 +342,19 @@ def load_config(path: str | Path, overrides: dict[str, Any] | None = None) -> Ru
 
 
 def config_to_dict(cfg: RunConfig) -> dict[str, Any]:
-    return dataclasses.asdict(cfg)
+    """JSON-shaped config.  The ``track_a`` section appears only for Track A, so a
+    run of any other system keeps the dict (and fingerprint) it had before
+    Track A existed.
+
+    >>> "track_a" in config_to_dict(load_config_dict({"name": "a"}))
+    False
+    >>> config_to_dict(load_config_dict({"name": "a", "model": {"name": "track_a"}}))["track_a"]["use_mel"]
+    True
+    """
+    d = dataclasses.asdict(cfg)
+    if cfg.model.name != "track_a":
+        d.pop("track_a")
+    return d
 
 
 def config_fingerprint(cfg: RunConfig) -> str:

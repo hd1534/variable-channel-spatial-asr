@@ -54,7 +54,8 @@ import spec  # noqa: E402
 import transcripts as tr  # noqa: E402
 from modern_asr import QWEN_BACKEND, cache_path, canonical_asr  # noqa: E402
 from models.slots import best_assignment_accuracy, online_slots, theta_grid, tune_theta  # noqa: E402
-from training.config import VAL_PROTOCOL_VERSION, config_fingerprint, load_config, load_config_dict  # noqa: E402
+from training.config import (TRAINED_SYSTEMS, VAL_PROTOCOL_VERSION, config_fingerprint, load_config,  # noqa: E402
+                             load_config_dict)
 from training.official import timepoint_records, track_for  # noqa: E402
 from training.runlock import exclusive_lock  # noqa: E402
 
@@ -67,7 +68,10 @@ VARIANTS = {
     "space_only": ("full",),
     "naive_fusion": ("full",),
     "proposed": ("full", "learned_space", "fixed_gate"),
+    "track_a": ("full", "full_context"),
 }
+FULL_AUDIO_VARIANTS: frozenset[str] = frozenset({"full_context"})
+"""Variants that read the whole session: scored as ``full_audio``, outside the official causal table."""
 LOCAL_ASR = {"wav2vec2": "facebook/wav2vec2-base-960h"}
 DEFAULT_ASR: str = "wav2vec2"
 
@@ -79,7 +83,7 @@ def load_system_inputs(args: argparse.Namespace) -> tuple[Any, dict[str, Any] | 
         cfg = load_config_dict(json.loads((run / "config.json").read_text(encoding="utf-8"))["config"])
         summary_path = run / "summary.json"
         summary = json.loads(summary_path.read_text(encoding="utf-8")) if summary_path.is_file() else None
-        best = run / "best.pt" if cfg.model.name == "proposed" else None
+        best = run / "best.pt" if cfg.model.name in TRAINED_SYSTEMS else None
         if summary is not None and not args.tune_on_eval and summary.get("val_protocol_version") != VAL_PROTOCOL_VERSION:
             raise SystemExit(
                 f"{summary_path} uses validation protocol {summary.get('val_protocol_version')!r}, "
@@ -101,7 +105,7 @@ def load_system_inputs(args: argparse.Namespace) -> tuple[Any, dict[str, Any] | 
                                  f"{summary.get('best_step')}): rerun train.py on {run} to refresh it")
         return cfg, summary, best
     cfg = load_config(args.config)
-    if cfg.model.name == "proposed":
+    if cfg.model.name in TRAINED_SYSTEMS:
         raise SystemExit("a trained model needs --run-dir (config.json, best.pt, summary.json)")
     summary = json.loads(Path(args.summary).read_text(encoding="utf-8")) if args.summary else None
     if summary is not None:
@@ -160,12 +164,12 @@ def embed_set(cfg: Any, set_dir: Path, gt: list[dict[str, Any]], meta: dict[str,
 
     from models import build_system, needs_voice
     from models.common import (build_voice_encoder, causal_vad, reference_audio, reference_channel, srp_embeddings,
-                               voice_embeddings)
+                               voice_embeddings, window_ahead)
 
     name = cfg.model.name
     voice = build_voice_encoder(cfg.model, device, savedir=model_cache) if needs_voice(cfg) else None
     system = None
-    if name == "proposed":
+    if name in TRAINED_SYSTEMS:
         system = build_system(cfg, voice).to(device)
         state = torch.load(best, map_location=device, weights_only=False)
         system.load_state_dict(state["model"])
@@ -176,7 +180,8 @@ def embed_set(cfg: Any, set_dir: Path, gt: list[dict[str, Any]], meta: dict[str,
         sessions.setdefault(row["session_id"], []).append(row)
     order = list(sessions)[: limit or None]
     out: dict[str, list[Any]] = {k: [] for k in ("case_id", "session_id", "mask", "ref", "speech", "labels",
-                                                 "voice", "space", "z", "spatial")}
+                                                 "voice", "space", "z", "spatial", "z_full", "speech_full")}
+    full_context = system is not None and "full" in getattr(system, "contexts", ())
     for i, sid in enumerate(order):
         rows = sessions[sid]
         x = torch.from_numpy(read_session(set_dir, sid))
@@ -204,7 +209,12 @@ def embed_set(cfg: Any, set_dir: Path, gt: list[dict[str, Any]], meta: dict[str,
             speech = causal_vad(reference_audio(batch), cfg.slots.vad_rel_db, cfg.slots.vad_floor_dbfs)
             if system is not None:
                 z = system.embed(batch, cache=cache).float()
-                spatial = system.last_spatial.float()
+                spatial = system.last_spatial.float() if system.last_spatial is not None else None
+            if full_context:
+                system.context = "full"
+                z_full = system.embed(batch, cache=cache).float()
+                system.context = "causal"
+                speech_full = window_ahead(speech)
         for b, row in enumerate(rows):
             out["case_id"].append(row["case_id"])
             out["session_id"].append(sid)
@@ -219,7 +229,11 @@ def embed_set(cfg: Any, set_dir: Path, gt: list[dict[str, Any]], meta: dict[str,
                 out["space"].append(cache["space"][b].float().cpu().numpy())
             if system is not None:
                 out["z"].append(z[b].cpu().numpy())
-                out["spatial"].append(spatial[b].cpu().numpy())
+                if spatial is not None:
+                    out["spatial"].append(spatial[b].cpu().numpy())
+            if full_context:
+                out["z_full"].append(z_full[b].cpu().numpy())
+                out["speech_full"].append(speech_full[b].cpu().numpy())
         if (i + 1) % 20 == 0 or i + 1 == len(order):
             print(f"  embedded {i + 1}/{len(order)} sessions", flush=True)
     return {k: np.asarray(v) for k, v in out.items() if len(v)}
@@ -228,8 +242,10 @@ def embed_set(cfg: Any, set_dir: Path, gt: list[dict[str, Any]], meta: dict[str,
 def inputs_fingerprint(cfg: Any, set_dir: Path, best: Path | None, limit: int,
                        components_from: list[str] | None = None) -> str:
     h = hashlib.sha256()
-    h.update(json.dumps({"model": cfg.model.__dict__, "slots": cfg.slots.__dict__, "limit": limit}, sort_keys=True,
-                        default=str).encode())
+    inputs = {"model": cfg.model.__dict__, "slots": cfg.slots.__dict__, "limit": limit}
+    if cfg.model.name == "track_a":  # left out otherwise, so the other systems' caches stay valid
+        inputs["track_a"] = cfg.track_a.__dict__
+    h.update(json.dumps(inputs, sort_keys=True, default=str).encode())
     h.update((set_dir / "manifest.json").read_bytes())
     if best is not None:
         h.update(hashlib.sha256(best.read_bytes()).digest())
@@ -316,8 +332,15 @@ def variant_parts(variant: str, name: str) -> tuple[str, str | None]:
         return "spatial", None
     if variant == "fixed_gate":
         return "spatial", "voice"
+    if variant == "full_context":
+        return "z_full", None
     return {"voice_only": ("voice", None), "space_only": ("space", None), "naive_fusion": ("space", "voice"),
-            "proposed": ("z", None)}[name]
+            "proposed": ("z", None), "track_a": ("z", None)}[name]
+
+
+def speech_key(variant: str) -> str:
+    """Speech flags matching a variant's label window (after ``t_k`` for full audio)."""
+    return "speech_full" if variant in FULL_AUDIO_VARIANTS else "speech"
 
 
 def summary_settings(summary: dict[str, Any], name: str, variant: str) -> tuple[dict[int, float], dict[int, float] | None]:
@@ -332,6 +355,8 @@ def summary_settings(summary: dict[str, Any], name: str, variant: str) -> tuple[
         theta, weight = diag.get("learned_space_only_theta_official_by_M"), None
     elif variant == "fixed_gate":
         theta, weight = diag.get("fixed_gate_theta_official_by_M"), diag.get("fixed_gate_weight_by_M")
+    elif variant == "full_context":
+        theta, weight = (summary.get("full_context") or {}).get("theta_official_by_M"), None
     else:
         theta = summary.get("theta_official_by_M")
         weight = summary.get("fusion_weight_by_M") if name == "naive_fusion" else None
@@ -343,7 +368,7 @@ def summary_settings(summary: dict[str, Any], name: str, variant: str) -> tuple[
 
 
 def tune_on_eval(emb: dict[str, np.ndarray], key: str, fuse_with: str | None, M: np.ndarray,
-                 cfg: Any) -> tuple[dict[int, float], dict[int, float] | None]:
+                 cfg: Any, speech: str = "speech") -> tuple[dict[int, float], dict[int, float] | None]:
     """Per M, the threshold (and fusion weight) with the best Spk Acc *on the eval set*."""
     thetas = theta_grid(cfg.slots.theta_grid)
     theta: dict[int, float] = {}
@@ -355,7 +380,7 @@ def tune_on_eval(emb: dict[str, np.ndarray], key: str, fuse_with: str | None, M:
         best = (-1.0, 0.0, None)
         for w in weights:
             cases = [{"emb": emb[key][i] if w is None else fused(emb[key][i], emb[fuse_with][i], float(w)),
-                      "speech": emb["speech"][i], "labels": emb["labels"][i]} for i in idx]
+                      "speech": emb[speech][i], "labels": emb["labels"][i]} for i in idx]
             r = tune_theta(cases, thetas, CAP, label_key="labels")
             best = max(best, (r["acc"], r["theta"], w), key=lambda t: t[0])
         theta[m] = best[1]
@@ -366,11 +391,11 @@ def tune_on_eval(emb: dict[str, np.ndarray], key: str, fuse_with: str | None, M:
 
 # -- run -----------------------------------------------------------------------
 def slots_for(emb: dict[str, np.ndarray], key: str, fuse_with: str | None, M: np.ndarray,
-              theta: dict[int, float], weight: dict[int, float] | None) -> np.ndarray:
+              theta: dict[int, float], weight: dict[int, float] | None, speech: str = "speech") -> np.ndarray:
     out = np.zeros((len(M), spec.N_GRID_POINTS), dtype=np.int64)
     for i, m in enumerate(M.tolist()):
         e = emb[key][i] if fuse_with is None else fused(emb[key][i], emb[fuse_with][i], weight[m])
-        out[i] = online_slots(e, emb["speech"][i], [theta[m]], CAP)[0]
+        out[i] = online_slots(e, emb[speech][i], [theta[m]], CAP)[0]
     return out
 
 
@@ -393,7 +418,8 @@ def asr_cache(args: argparse.Namespace) -> tuple[tr.SegmentCache, Any]:
 
 def run_variant(set_name: str, set_dir: Path, out_dir: Path, emb: dict[str, np.ndarray], slots: np.ndarray,
                 cache: tr.SegmentCache, backend: Any, info: dict[str, Any],
-                asr_python: str | None = None, asr_device: str = "cuda") -> dict[str, Any] | None:
+                asr_python: str | None = None, asr_device: str = "cuda",
+                mode: str = "causal") -> dict[str, Any] | None:
     """Score one variant, optionally filling Qwen requests in an isolated process."""
     out_dir.mkdir(parents=True, exist_ok=True)
     segments = {cid: tr.case_segments(set_name, cid, sid, int(ref), s.tolist())
@@ -427,8 +453,13 @@ def run_variant(set_name: str, set_dir: Path, out_dir: Path, emb: dict[str, np.n
     if cache.backend == QWEN_BACKEND and runtime_path.exists():
         info["asr_runtime"] = json.loads(runtime_path.read_text(encoding="utf-8"))
     for cid, s in zip(emb["case_id"], slots):
-        records.extend(timepoint_records(str(cid), s.tolist(), TRACK))
-        records.append(tr.transcript_record(str(cid), tr.final_transcripts(segments[cid], cache)))
+        points = timepoint_records(str(cid), s.tolist(), TRACK)
+        final = tr.transcript_record(str(cid), tr.final_transcripts(segments[cid], cache))
+        if mode != "causal":
+            for record in (*points, final):
+                record["observation_mode"] = mode
+        records.extend(points)
+        records.append(final)
     pred_path = out_dir / "predictions.jsonl"
     pred_path.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in records), encoding="utf-8")
     gt_path = set_dir / "ground_truth.jsonl"
@@ -438,6 +469,10 @@ def run_variant(set_name: str, set_dir: Path, out_dir: Path, emb: dict[str, np.n
         gt_path = out_dir / "ground_truth.subset.jsonl"
         gt_path.write_text("\n".join(rows) + "\n", encoding="utf-8")
     report = evaluate.evaluate_files(pred_path, gt_path, TRACK)
+    if mode != "causal":
+        # The breakdown covers the official (causal) scope only: score each M separately.
+        report["observation_mode"] = mode
+        report["by_M"] = full_audio_by_M(records, gt_path, mode, out_dir)
     # Frame-optimal Spk Acc per case (models/slots.py), the number validation selects on.
     by_M: dict[str, list[float]] = {}
     for lab, s, mask in zip(emb["labels"], slots, emb["mask"]):
@@ -523,10 +558,40 @@ def eval_is_complete(
     return True
 
 
+def full_audio_by_M(records: list[dict[str, Any]], gt_path: Path, mode: str, out_dir: Path) -> dict[str, Any]:
+    """``evaluate.py`` metrics of a non-causal variant per number of active microphones."""
+    gt_rows = [line for line in gt_path.read_text(encoding="utf-8").splitlines() if line]
+    n_channels = {}
+    for line in gt_rows:
+        row = json.loads(line)
+        n_channels[row["case_id"]] = str(row["mask_bits"]).count("1") if "mask_bits" in row else None
+    meta_path = gt_path.parent / "meta.jsonl"
+    if any(v is None for v in n_channels.values()) and meta_path.is_file():
+        for line in meta_path.read_text(encoding="utf-8").splitlines():
+            if line:
+                m = json.loads(line)
+                if m["case_id"] in n_channels:
+                    n_channels[m["case_id"]] = len(m["active_channels"])
+    out: dict[str, Any] = {}
+    for M in sorted({v for v in n_channels.values() if v is not None}, reverse=True):
+        keep = {cid for cid, v in n_channels.items() if v == M}
+        p, g = out_dir / f".by_M{M}.predictions.jsonl", out_dir / f".by_M{M}.ground_truth.jsonl"
+        p.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in records if r["case_id"] in keep),
+                     encoding="utf-8")
+        g.write_text("\n".join(line for line in gt_rows if json.loads(line)["case_id"] in keep) + "\n", encoding="utf-8")
+        try:
+            out[str(M)] = {"metrics": evaluate.evaluate_files(p, g, TRACK)["scopes"][mode]["metrics"]}
+        finally:
+            p.unlink(missing_ok=True)
+            g.unlink(missing_ok=True)
+    return out
+
+
 def table_line(report: dict[str, Any]) -> str:
     cells = []
     for m in ("4", "3", "2", "1"):
-        entry = report["breakdown"]["by_n_channels"].get(m)
+        entry = (report.get("by_M") if report.get("observation_mode") not in (None, "causal")
+                 else report["breakdown"]["by_n_channels"]).get(m)
         if entry:
             met = entry["metrics"]
             cells.append(f"M={m} acc {met[evaluate.METRIC_SPEAKER_ACC]:.3f} cpWER {met['cpwer']:.3f}")
@@ -596,11 +661,12 @@ def run_sets(args: argparse.Namespace, cfg: Any, summary: dict[str, Any] | None,
         M = np.array([str(m).count("1") for m in emb["mask"]])
         for variant in variants:
             key, fuse_with = variant_parts(variant, name)
+            speech = speech_key(variant)
             if variant not in settings:  # chosen once (main set first), reused for static
-                settings[variant] = (tune_on_eval(emb, key, fuse_with, M, cfg) if args.tune_on_eval
+                settings[variant] = (tune_on_eval(emb, key, fuse_with, M, cfg, speech) if args.tune_on_eval
                                      else summary_settings(summary, name, variant))
             theta, weight = settings[variant]
-            slots = slots_for(emb, key, fuse_with, M, theta, weight)
+            slots = slots_for(emb, key, fuse_with, M, theta, weight, speech)
             info = {"system": name, "config": cfg.name, "variant": variant, "set": set_name,
                     "thresholds": "eval set (optimistic)" if args.tune_on_eval else "validation",
                     "theta_by_M": theta, "weight_by_M": weight, "asr": cache.backend,
@@ -608,8 +674,10 @@ def run_sets(args: argparse.Namespace, cfg: Any, summary: dict[str, Any] | None,
                     "n_cases": int(len(M)), "limit": args.limit,
                     "summary": {k: (summary or {}).get(k)
                                 for k in ("run", "config", "best_step", "fingerprint", "val_protocol_version")}}
+            mode = "full_audio" if variant in FULL_AUDIO_VARIANTS else "causal"
+            info["observation_mode"] = mode
             report = run_variant(set_name, set_dir, Path(args.out) / set_name / variant, emb, slots, cache, backend, info,
-                                 args.asr_python, args.asr_device)
+                                 args.asr_python, args.asr_device, mode)
             if report is None:
                 return 2
             results[f"{set_name}/{variant}"] = report

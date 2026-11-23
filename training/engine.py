@@ -62,7 +62,8 @@ from torch.utils.data import DataLoader
 
 import spec
 from models import SYSTEMS, build_system, needs_voice
-from models.common import build_voice_encoder, causal_vad, reference_audio, reference_channel, srp_embeddings, voice_embeddings
+from models.common import (build_voice_encoder, causal_vad, reference_audio, reference_channel, srp_embeddings,
+                           voice_embeddings, window_ahead)
 from models.slots import (accuracy_near_changes, best_assignment_accuracy, causal_ceiling, centroid_accuracy,
                           online_slots, theta_grid, tune_theta)
 from training.config import VAL_PROTOCOL_VERSION, RunConfig, config_fingerprint, config_to_dict
@@ -595,8 +596,13 @@ class Run:
             with torch.autocast(device_type=self.device, dtype=self.amp_dtype or torch.float32,
                                 enabled=self.amp_dtype is not None):
                 z = self.system.embed(batch)
-            loss_spk, stats = self.loss_fn(z.float(), batch["labels"])
-            loss_pos, pos_stats = self.pos_loss_fn(self.system.last_spatial.float(), batch["pos_labels"])
+            # Track A labels a full-context batch on the official window after t_k (labels_eval).
+            loss_spk, stats = self.loss_fn(z.float(), batch[getattr(self.system, "train_label_key", "labels")])
+            spatial = getattr(self.system, "last_spatial", None)
+            if spatial is not None:
+                loss_pos, pos_stats = self.pos_loss_fn(spatial.float(), batch["pos_labels"])
+            else:  # no separately trained spatial branch (Track A)
+                loss_pos, pos_stats = loss_spk.new_zeros(()), {"acc": float("nan")}
             loss = loss_spk + cfg.train.position_loss_weight * loss_pos
             if not torch.isfinite(loss):
                 skipped += 1
@@ -626,9 +632,14 @@ class Run:
             self.sched.step()
             self.step += 1
 
-            for key, value in (("loss_spk", loss_spk.item()), ("acc_spk", stats["acc"]), ("loss_pos", loss_pos.item()),
-                               ("acc_pos", pos_stats["acc"]), ("theta_learned", self.loss_fn.threshold()),
-                               ("grad_norm", float(grad_norm)), ("data_sec", data_sec), ("step_sec", time.time() - t0)):
+            logged = [("loss_spk", loss_spk.item()), ("acc_spk", stats["acc"])]
+            if spatial is not None:
+                logged += [("loss_pos", loss_pos.item()), ("acc_pos", pos_stats["acc"])]
+            if hasattr(self.system, "last_context"):
+                logged.append(("full_context", float(self.system.last_context == "full")))
+            logged += [("theta_learned", self.loss_fn.threshold()), ("grad_norm", float(grad_norm)),
+                       ("data_sec", data_sec), ("step_sec", time.time() - t0)]
+            for key, value in logged:
                 window.setdefault(key, []).append(value)
             gate = getattr(self.system, "last_gate", None)
             if gate is not None:
@@ -674,11 +685,12 @@ class Run:
             return None
         return best
 
-    @staticmethod
-    def _selection_score(result: dict[str, Any]) -> float:
-        """Select on official two-slot M>=2 accuracy, with the general-N diagnostic as fallback."""
+    def _selection_score(self, result: dict[str, Any]) -> float:
+        """Select on official two-slot accuracy over M >= 2 (M >= 1 for a system that
+        must answer at one microphone itself), with the general-N diagnostic as fallback."""
         by_m = result.get("spk_acc_n2_cap2_by_M") or result["spk_acc_by_M"]
-        multi: list[float] = [value for microphones, value in by_m.items() if int(microphones) >= 2]
+        lowest = getattr(self.system, "select_min_M", 2)
+        multi: list[float] = [value for microphones, value in by_m.items() if int(microphones) >= lowest]
         return round(float(np.mean(multi)), 4) if multi else result.get("spk_acc_n2_cap2", result["spk_acc"])
 
     def _best_checkpoint(self, result: dict[str, Any]) -> dict[str, Any]:
@@ -698,7 +710,7 @@ class Run:
             atomic_save(self._best_checkpoint(result), self.run_dir / "best.pt")
         self._event(kind="val", improved=improved, **{k: v for k, v in result.items() if k != "cases"})
         extra = f" position_acc={result['position_acc_by_M']}" if "position_acc_by_M" in result else ""
-        self.log(f"[val] step {self.step} select(M>=2,cap2)={score:.4f} spk_acc_n2_cap2={result.get('spk_acc_n2_cap2', result['spk_acc']):.4f} "
+        self.log(f"[val] step {self.step} select(M>={getattr(self.system, 'select_min_M', 2)},cap2)={score:.4f} spk_acc_n2_cap2={result.get('spk_acc_n2_cap2', result['spk_acc']):.4f} "
                  f"by_M(cap2)={by_m} theta_official_by_M={result.get('theta_official_by_M', result['theta_by_M'])}{extra}"
                  + ("  *best*" if improved else ""))
 
@@ -740,6 +752,8 @@ class Run:
                                                       lambda: srp_embeddings(batch, cfg.model.srp_temperature))
                     z = self.system.embed(batch, cache=cache).float()
                     speech = causal_vad(reference_audio(batch), cfg.slots.vad_rel_db, cfg.slots.vad_floor_dbfs)
+                    if getattr(self.system, "context", "causal") == "full":
+                        speech = window_ahead(speech)
                     gate = getattr(self.system, "last_gate", None)
                     spatial = getattr(self.system, "last_spatial", None)
                     for b in range(z.shape[0]):
@@ -991,6 +1005,46 @@ class Run:
         }
         return out
 
+    def _full_context_report(self) -> dict[str, Any]:
+        """The same weights with full self-attention (a ``full_audio`` reference row).
+
+        Thresholds are tuned again on the main validation condition, as for every
+        other system, and kept for ``eval_t2.py``'s ``full_context`` variant.
+        """
+        self.system.context = "full"
+        try:
+            cases = self.collect_cases()
+        finally:
+            self.system.context = "causal"
+        cap = self.cfg.slots.max_slots
+        two = [c for c in cases if c["N"] == 2]
+        cap2 = min(spec.MAX_SPEAKERS_PER_TRACK[track_for(2)], cap)
+        group = two or cases
+        theta = self._tune_by_M(group, cap2 if two else cap)
+        out: dict[str, Any] = {
+            "observation_mode": "full_audio",
+            "theta_official_by_M": {str(m): t["theta"] for m, t in theta.items()},
+            "spk_acc_n2_cap2_by_M": self._accuracy_by_M(group, theta, cap2 if two else cap),
+        }
+        self.log(f"[run] full context: spk_acc_n2_cap2_by_M={out['spk_acc_n2_cap2_by_M']}")
+        return out
+
+    def _condition_diagnostics(self, theta_by_M: dict[int, Any]) -> dict[str, Any]:
+        """Static and co-located conditions for a system without a separate voice cue.
+
+        ``static`` re-tunes thresholds there (talkers at rest, no noise);
+        ``colocated`` keeps the main thresholds and puts every talker at one
+        position, so what is left is what the model takes from the voice.
+        """
+        cap = self.cfg.slots.max_slots
+        static = self.collect_cases("static")
+        colocated = self.collect_cases("colocated")
+        return {
+            "static": {"spk_acc_by_M": self._accuracy_by_M(static, self._tune_by_M(static, cap), cap)},
+            "colocated": {"spk_acc_by_M": self._accuracy_by_M(colocated, theta_by_M, cap),
+                          "chance_approx": round(float(np.mean([1.0 / c["N"] for c in colocated])), 4)},
+        }
+
     def _clean_voice_centroids(self) -> dict[str, np.ndarray]:
         """Per validation talker, the mean frozen-ECAPA embedding of clean 3 s pieces of
         their speech (no room), for binning talker pairs by voice similarity (H3)."""
@@ -1024,6 +1078,9 @@ class Run:
         theta_full = result.pop("theta_by_M_full")
         if self.cfg.model.name == "proposed":
             result["diagnostics"] = self._proposed_diagnostics(cases, theta_full)
+        if "full" in getattr(self.system, "contexts", ()):
+            result["full_context"] = self._full_context_report()
+            result["diagnostics"] = self._condition_diagnostics(theta_full)
         clean = self._clean_voice_centroids() if self.voice is not None and not self.cfg.data.synthetic else {}
         with open(self.run_dir / "val_cases.jsonl.tmp", "w", encoding="utf-8") as fh:
             for c in cases:
@@ -1099,8 +1156,10 @@ def run_is_complete(run_dir: str | Path, cfg: RunConfig) -> bool:
         or summary.get("val_protocol_version") != VAL_PROTOCOL_VERSION
     ):
         return False
-    if cfg.model.name != "proposed":
+    if not SYSTEMS[cfg.model.name].trainable:
         return True
+    if "full" in getattr(SYSTEMS[cfg.model.name], "contexts", ()) and "full_context" not in summary:
+        return False
     if (summary.get("trained_steps") or 0) < cfg.train.max_steps:
         return False
     best_path = run / "best.pt"

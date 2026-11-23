@@ -58,6 +58,8 @@ Qwen3-ASR 자체는 화자를 구분하지 않는다. 각 시스템이 예측한
 | `proposed_carry` | TAC 공간 경로 + 동결 ECAPA + 2층 인과 GRU 게이트, 청크 간 상태 유지 | 학습 | `full`, `learned_space`, `fixed_gate` |
 | `proposed_reset` | 같은 구조, 청크마다 상태 초기화 | 학습 | 같음 |
 | `proposed_carry_nodrop` | `proposed_carry`를 4채널 고정으로 학습한 대조군(채널 드롭 없음) | 학습 | 같음 |
+| `track_a` | Track A: 사전학습 모델 없이 Log-Mel + 마이크 쌍 GCC-PHAT를 받는 경량 인과 Conformer(약 2.3M) | 학습 | `full`(causal), `full_context`(`full_audio` 참고 행) |
+| `track_a_spatial` | `track_a`에서 Log-Mel을 뺀 대조군(위치 정보만) | 학습 | 같음 |
 
 - **제안 모델 학습**: 공간 경로는 화자 손실이 아니라 음원 위치 식별 손실로만 학습한다. 채널 간 특징만으로도 화자가 약 0.88 맞아서 생기는 누수를 막기 위해서다. 게이트는 목소리를 입력받지 않고, M = 1에서는 구조상 0이라 목소리 전용과 같다.
 - **학습 기본값**: 20,000걸음, 배치 16, AdamW lr 1e-3, warm-up 500, 혼합 정밀도.
@@ -65,6 +67,10 @@ Qwen3-ASR 자체는 화자를 구분하지 않는다. 각 시스템이 예측한
   - 학습 RIR: 방 800개
   - 학습 중 채널 수 비중: M = 2·3·4 균등(`m_weights`)
 - **진단 변형**: `learned_space`는 학습된 공간 경로만 쓴 것이고, `fixed_gate`는 게이트를 M별 고정 가중치로 바꾼 것이다.
+- **Track A**: 학습 배치마다 인과 모드와 전체 문맥 모드를 무작위로 골라, 한 가중치로 두 관측 범위를 함께 학습한다.
+  - M = 1까지 채널을 드롭하고, 체크포인트도 M = 1~4로 고른다.
+  - 같은 데이터·같은 예산(20,000걸음)으로 학습한다.
+  - 설계와 근거는 [docs/track-a-design.md](docs/track-a-design.md)에 있다.
 - **검증 세트**: 화자는 `dev-clean`에서 사전 측정 화자 6명을 뺀 34명이다. 본 평가 주 조건과 같은 꼴로 200세션을 만든다. 임계값·가중치와 최고 체크포인트를 여기서 고르고, 본 평가셋에서는 아무것도 조정하지 않는다.
 
 ## 5. 지표
@@ -107,4 +113,4 @@ Qwen3-ASR 자체는 화자를 구분하지 않는다. 각 시스템이 예측한
 
 wav2vec2 전사 결과와 정지 조건 결과도 같은 꼴로 덧붙인다. mono 비교군과 Track B는 `full_audio` 참고 행으로 따로 둔다.
 
-**Track A(초경량 Conformer)**: 웹페이지 표에 행은 있지만 실행할 노트북과 코드가 아직 없다.
+**Track A(초경량 Conformer)**: 코드는 있고 학습 전이다. `train_template.ipynb`(`CONFIG="all_track_a"`)로 학습하고 `benchmark.ipynb`(`SYSTEMS="all_track_a"`)로 채점한다.

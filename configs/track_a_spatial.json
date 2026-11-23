@@ -1,0 +1,2 @@
+{"name": "track_a_spatial", "model": {"name": "track_a"}, "data": {"m_weights": [1.0, 1.0, 1.0, 1.0]},
+ "track_a": {"use_mel": false}}

@@ -1,0 +1,38 @@
+{
+ "name": "smoke_track_a",
+ "data": {
+  "synthetic": true,
+  "rir_engine": "fallback_ism",
+  "rir_sec": 0.5,
+  "n_rooms_train": 4,
+  "n_rooms_val": 2,
+  "n_val_sessions": 4,
+  "num_workers": 0,
+  "m_weights": [
+   1.0,
+   1.0,
+   1.0,
+   1.0
+  ]
+ },
+ "model": {
+  "name": "track_a"
+ },
+ "train": {
+  "batch_size": 2,
+  "max_steps": 6,
+  "warmup_steps": 2,
+  "val_every": 3,
+  "ckpt_every": 2,
+  "log_every": 1,
+  "amp": false
+ },
+ "track_a": {
+  "d_model": 32,
+  "n_layers": 1,
+  "n_heads": 2,
+  "n_pair_tac_blocks": 1,
+  "d_embed": 16,
+  "n_mels": 20
+ }
+}
