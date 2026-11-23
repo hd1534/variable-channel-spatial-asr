@@ -76,6 +76,12 @@ from training.rirbank import BankSpec, build_bank
 
 REPO = Path(__file__).resolve().parent.parent
 
+COLOCATED_PROTOCOL: int = 2
+"""Version of the co-located diagnostic in ``summary.json`` (diagnostics only:
+thresholds, checkpoints and eval settings do not read it).  v1 kept displaced
+turns, so each talker could still sit at a copy of its own; v2 puts every turn
+at the first copy of one position."""
+
 
 def _rng_state() -> dict[str, Any]:
     """Capture all random generators needed to resume training unchanged."""
@@ -1006,6 +1012,7 @@ class Run:
             "spatial_part_talker_acc_by_M": spatial_talker_acc(colocated),
             "spatial_part_talker_acc_own_positions_by_M": spatial_talker_acc(cases),
             "chance_approx": round(float(np.mean([1.0 / c["N"] for c in colocated])), 4),
+            "protocol": COLOCATED_PROTOCOL,
         }
         return out
 
@@ -1046,7 +1053,8 @@ class Run:
         return {
             "static": {"spk_acc_by_M": self._accuracy_by_M(static, self._tune_by_M(static, cap), cap)},
             "colocated": {"spk_acc_by_M": self._accuracy_by_M(colocated, theta_by_M, cap),
-                          "chance_approx": round(float(np.mean([1.0 / c["N"] for c in colocated])), 4)},
+                          "chance_approx": round(float(np.mean([1.0 / c["N"] for c in colocated])), 4),
+                          "protocol": COLOCATED_PROTOCOL},
         }
 
     def _clean_voice_centroids(self) -> dict[str, np.ndarray]:
@@ -1179,4 +1187,33 @@ def run_is_complete(run_dir: str | Path, cfg: RunConfig) -> bool:
         and state.get("step") == summary.get("best_step")
         and "select_score" in state.get("val", {})
     )
+
+
+def diagnostics_current(run_dir: str | Path) -> bool:
+    """Whether a finished run's co-located diagnostic follows ``COLOCATED_PROTOCOL``.
+
+    Kept apart from :func:`run_is_complete` on purpose: the diagnostic feeds no
+    threshold or eval setting, so a stale one should send the run back through
+    the final validation (``train.py`` skips the finished training) without
+    making the benchmark treat the system as untrained.
+
+    >>> import tempfile
+    >>> with tempfile.TemporaryDirectory() as d:
+    ...     p = Path(d, "summary.json")
+    ...     _ = p.write_text('{"diagnostics": {"colocated": {"protocol": 1}}}')
+    ...     old = diagnostics_current(d)
+    ...     _ = p.write_text('{"diagnostics": {"colocated": {"protocol": %d}}}' % COLOCATED_PROTOCOL)
+    ...     new = diagnostics_current(d)
+    ...     _ = p.write_text('{"system": "voice_only"}')
+    ...     baseline = diagnostics_current(d)
+    >>> old, new, baseline
+    (False, True, True)
+    """
+    try:
+        summary = json.loads(Path(run_dir, "summary.json").read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return False
+    if "diagnostics" not in summary:  # baselines run no condition diagnostics
+        return True
+    return ((summary["diagnostics"] or {}).get("colocated") or {}).get("protocol") == COLOCATED_PROTOCOL
 

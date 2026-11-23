@@ -79,6 +79,8 @@ class Recipe:
     jitter: bool
     noise_snr_db: tuple[float, float] | None
     all_colocated: bool = False
+    """Every talker at the first talker's position *and* every turn at its first copy
+    (no displaced turns), so no position cue of any size is left between talkers."""
     snr_levels_db: tuple[float, ...] | None = None
     """If set, the SNR is one of these (as in the eval set) instead of uniform in ``noise_snr_db``."""
 
@@ -95,7 +97,7 @@ def val_recipe(cfg: Any, kind: str = "main") -> Recipe:
     what thresholds and checkpoints are chosen on, like the eval's main set;
     ``static``: the same sessions with talkers at rest and no noise (the eval's
     static set); ``colocated``: the main sessions with every talker at the first
-    talker's position.
+    talker's position and every turn at its first copy (noise unchanged).
     """
     levels = tuple(cfg.val_snr_levels_db)
     main = Recipe(tuple(cfg.val_n_speakers), cfg.val_eval_layout_prob, 0.0, cfg.bank_variants > 1,
@@ -376,6 +378,11 @@ def draw_session(rng: random.Random, corpus: SpeechCorpus, bank: RirBank, cfg: A
         if recipe.jitter:  # a talker who speaks again moves to another copy, as in make_eval_t2._turn_copies
             options = [v for v in range(bank.variants) if v != last_variant.get(talker)] or [0]
             variant = last_variant[talker] = aux.choice(options)
+        if recipe.all_colocated:
+            # Displaced copies would leave each talker a small position of their own
+            # (often one turn per talker), which a spatial branch can separate.  The
+            # copy is still drawn above so the noise matches the main session.
+            variant = 0
         a = int(round(t * SR))
         b = min(SESSION_SAMPLES, a + len(seg))
         if b <= a:

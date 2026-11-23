@@ -791,6 +791,22 @@ class TestScenes(unittest.TestCase):
         self.assertEqual(main.layout, "eval")
         self.assertEqual(main.n_speakers, 2)
 
+    def test_colocated_talkers_keep_no_displaced_copy(self) -> None:
+        """Co-located means one point: no per-turn copy that could leave each talker a position of its own."""
+        from training.scenes import draw_session, val_recipe
+
+        cfg = self.cfg
+        displaced = 0
+        for i in range(10):
+            main = draw_session(random.Random(f"val:{i}"), self.corpus, self.bank, cfg, val_recipe(cfg, "main"))
+            coloc = draw_session(random.Random(f"val:{i}"), self.corpus, self.bank, cfg, val_recipe(cfg, "colocated"))
+            displaced += int(main.variant_map.max() > 0)
+            self.assertEqual(int(coloc.variant_map.max()), 0)
+            self.assertTrue(all(t.variant == 0 for t in coloc.turns))
+            # the copy is still drawn, so the noise is the main session's
+            self.assertEqual((coloc.snr_db, coloc.noise_seed), (main.snr_db, main.noise_seed))
+        self.assertGreater(displaced, 0)  # the main condition does exercise displaced turns
+
     def test_a_returning_talker_moves_to_another_copy(self) -> None:
         from training.scenes import draw_session, val_recipe
 
