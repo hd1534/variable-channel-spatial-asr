@@ -807,6 +807,29 @@ class TestScenes(unittest.TestCase):
             self.assertEqual((coloc.snr_db, coloc.noise_seed), (main.snr_db, main.noise_seed))
         self.assertGreater(displaced, 0)  # the main condition does exercise displaced turns
 
+    def test_equal_gain_colocated_changes_only_the_talker_levels(self) -> None:
+        """Same turns, copies and noise as ``colocated``; only each talker's level is evened out."""
+        from training.scenes import draw_session, val_recipe
+
+        cfg = self.cfg
+        spread = 0.0
+        for i in range(5):
+            coloc = draw_session(random.Random(f"val:{i}"), self.corpus, self.bank, cfg, val_recipe(cfg, "colocated"))
+            equal = draw_session(random.Random(f"val:{i}"), self.corpus, self.bank, cfg,
+                                 val_recipe(cfg, "colocated_equal_gain"))
+            np.testing.assert_array_equal(coloc.labels, equal.labels)
+            np.testing.assert_array_equal(coloc.variant_map, equal.variant_map)
+            self.assertEqual(coloc.speaker_ids, equal.speaker_ids)
+            self.assertEqual(coloc.sources, equal.sources)
+            self.assertEqual((coloc.snr_db, coloc.noise_seed), (equal.snr_db, equal.noise_seed))
+            ratios = []
+            for k in range(coloc.n_speakers):
+                r = np.linalg.norm(equal.dry[k]) / np.linalg.norm(coloc.dry[k])
+                np.testing.assert_allclose(equal.dry[k], r * coloc.dry[k], rtol=1e-5, atol=1e-7)  # float32 storage
+                ratios.append(r)
+            spread = max(spread, float(np.ptp(np.log(ratios))))
+        self.assertGreater(spread, 1e-3)  # the talkers' levels did differ before
+
     def test_a_returning_talker_moves_to_another_copy(self) -> None:
         from training.scenes import draw_session, val_recipe
 

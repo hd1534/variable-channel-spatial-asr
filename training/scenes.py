@@ -83,6 +83,10 @@ class Recipe:
     (no displaced turns), so no position cue of any size is left between talkers."""
     snr_levels_db: tuple[float, ...] | None = None
     """If set, the SNR is one of these (as in the eval set) instead of uniform in ``noise_snr_db``."""
+    equal_gain: bool = False
+    """Every talker at the same level (``speaker_gain_db`` drawn, then ignored, so the
+    rest of the session is unchanged).  With ``all_colocated`` this leaves the spatial
+    branch only spectral differences between talkers to separate them by."""
 
 
 def train_recipe(cfg: Any) -> Recipe:
@@ -97,7 +101,8 @@ def val_recipe(cfg: Any, kind: str = "main") -> Recipe:
     what thresholds and checkpoints are chosen on, like the eval's main set;
     ``static``: the same sessions with talkers at rest and no noise (the eval's
     static set); ``colocated``: the main sessions with every talker at the first
-    talker's position and every turn at its first copy (noise unchanged).
+    talker's position and every turn at its first copy (noise unchanged);
+    ``colocated_equal_gain``: ``colocated`` with every talker at the same level.
     """
     levels = tuple(cfg.val_snr_levels_db)
     main = Recipe(tuple(cfg.val_n_speakers), cfg.val_eval_layout_prob, 0.0, cfg.bank_variants > 1,
@@ -108,6 +113,8 @@ def val_recipe(cfg: Any, kind: str = "main") -> Recipe:
         return replace(main, jitter=False, noise_snr_db=None, snr_levels_db=None)
     if kind == "colocated":
         return replace(main, all_colocated=True)
+    if kind == "colocated_equal_gain":
+        return replace(main, all_colocated=True, equal_gain=True)
     raise ValueError(f"unknown validation kind {kind!r}")
 
 
@@ -355,6 +362,8 @@ def draw_session(rng: random.Random, corpus: SpeechCorpus, bank: RirBank, cfg: A
     sources = _assign_sources(rng, bank, room, n, eval_layout)
     speakers = rng.sample(list(corpus.speakers), n)
     gain = [10 ** (rng.uniform(-cfg.speaker_gain_db, cfg.speaker_gain_db) / 20) for _ in range(n)]
+    if recipe.equal_gain:
+        gain = [1.0] * n
     target_rms = 10 ** (rng.uniform(*SESSION_GAIN_DBFS_RANGE) / 20)
     channel_gain = np.asarray([10 ** (rng.uniform(-CHANNEL_GAIN_MISMATCH_DB, CHANNEL_GAIN_MISMATCH_DB) / 20)
                                for _ in range(spec.N_CHANNELS_MAX)], dtype=np.float32)

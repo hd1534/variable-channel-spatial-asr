@@ -76,11 +76,12 @@ from training.rirbank import BankSpec, build_bank
 
 REPO = Path(__file__).resolve().parent.parent
 
-COLOCATED_PROTOCOL: int = 2
+COLOCATED_PROTOCOL: int = 3
 """Version of the co-located diagnostic in ``summary.json`` (diagnostics only:
 thresholds, checkpoints and eval settings do not read it).  v1 kept displaced
 turns, so each talker could still sit at a copy of its own; v2 puts every turn
-at the first copy of one position."""
+at the first copy of one position; v3 adds the same sessions with every talker
+at one level, to tell a loudness cue from a spectral one in the spatial branch."""
 
 
 def _rng_state() -> dict[str, Any]:
@@ -734,8 +735,9 @@ class Run:
         """Embed every validation session under every mask of ``data.val_masks``.
 
         ``kind`` is a :func:`training.scenes.val_recipe` condition: ``main``
-        (what thresholds and checkpoints are chosen on), ``static`` or
-        ``colocated`` (the same sessions under other conditions).
+        (what thresholds and checkpoints are chosen on), ``static``,
+        ``colocated`` or ``colocated_equal_gain`` (the same sessions under other
+        conditions).
         """
         cfg = self.cfg
         loader = DataLoader(ValSessions(cfg.data, self.val_corpus, self.val_bank, kind=kind),
@@ -957,7 +959,10 @@ class Run:
           eval's static set; thresholds re-tuned there);
         * ``colocated``: the same sessions with every talker at one position, where
           space carries no information: the spatial part should separate talkers
-          only at chance, and the model should not fall below voice-only.
+          only at chance, and the model should not fall below voice-only.  The
+          spatial part is also scored with every talker at one level
+          (``spatial_part_talker_acc_equal_gain_by_M``): what separation is left
+          there comes from the talkers' spectra, what disappears came from level.
         """
         cap = self.cfg.slots.max_slots
         two = [c for c in cases if c["N"] == 2]
@@ -1010,6 +1015,7 @@ class Run:
             "voice_only_by_M": coloc_voice,
             "paired_gain_over_voice_by_M": {m: round(coloc_model[m] - coloc_voice[m], 4) for m in coloc_model},
             "spatial_part_talker_acc_by_M": spatial_talker_acc(colocated),
+            "spatial_part_talker_acc_equal_gain_by_M": spatial_talker_acc(self.collect_cases("colocated_equal_gain")),
             "spatial_part_talker_acc_own_positions_by_M": spatial_talker_acc(cases),
             "chance_approx": round(float(np.mean([1.0 / c["N"] for c in colocated])), 4),
             "protocol": COLOCATED_PROTOCOL,
