@@ -1,0 +1,2 @@
+{"name": "track_c_smoke_real", "use_spatial": true, "max_steps": 30, "warmup_steps": 5, "val_every": 15,
+ "val_sessions": 4, "val_masks": ["1111", "1000"], "final_val_sessions": 4, "ckpt_every": 10, "log_every": 5}

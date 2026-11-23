@@ -116,6 +116,8 @@ class Turn:
     end_sec: float
     utt_id: str
     variant: int
+    text: str = ""
+    """What the talker says in this turn, when the reader knows it (Track C's word-aligned reader)."""
 
 
 @dataclass
@@ -313,12 +315,16 @@ def _assign_sources(rng: random.Random, bank: RirBank, room: int, n: int, eval_l
     return rng.sample(range(SOURCES_PER_ROOM), n)
 
 
-def draw_session(rng: random.Random, corpus: SpeechCorpus, bank: RirBank, cfg: Any, recipe: Recipe) -> Session:
+def draw_session(rng: random.Random, corpus: SpeechCorpus, bank: RirBank, cfg: Any, recipe: Recipe,
+                 make_reader: Any = None) -> Session:
     """Draw one session.  ``rng`` fully determines it (given corpus, bank and recipe).
 
     Jitter variants, noise and co-location come from their own random stream,
     so the main, robust and co-located validation sets are the *same* sessions
     under different conditions (a paired comparison).
+
+    ``make_reader(rng, corpus, utterances)`` replaces the per-talker reader;
+    a reader with a ``last_text`` attribute labels each turn with its words.
     """
     import numpy as np
 
@@ -357,7 +363,7 @@ def draw_session(rng: random.Random, corpus: SpeechCorpus, bank: RirBank, cfg: A
     if recipe.all_colocated:
         sources = [sources[0]] * n
 
-    readers = [_TalkerReader(rng, corpus, corpus.by_speaker[s]) for s in speakers]
+    readers = [(make_reader or _TalkerReader)(rng, corpus, corpus.by_speaker[s]) for s in speakers]
     dry = np.zeros((n, SESSION_SAMPLES), dtype=np.float64)
     variant_map = np.zeros((n, SESSION_SAMPLES), dtype=np.int8)
     turns: list[Turn] = []
@@ -376,7 +382,7 @@ def draw_session(rng: random.Random, corpus: SpeechCorpus, bank: RirBank, cfg: A
             break
         dry[talker, a:b] += seg[: b - a]
         variant_map[talker, a:b] = variant
-        turns.append(Turn(talker, a / SR, b / SR, utt.utt_id, variant))
+        turns.append(Turn(talker, a / SR, b / SR, utt.utt_id, variant, getattr(readers[talker], "last_text", "")))
         t = b / SR + (gaps[i] if i < len(gaps) else 0.0)
         if t >= spec.SESSION_LENGTH_SEC - TAIL_SEC:
             break

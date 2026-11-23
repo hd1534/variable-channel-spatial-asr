@@ -1,0 +1,5 @@
+{"name": "track_c_smoke", "use_spatial": true, "max_steps": 6, "batch_size": 2, "grad_accum": 1, "warmup_steps": 2,
+ "val_every": 3, "val_sessions": 2, "val_masks": ["1100", "1000"], "final_val_sessions": 2, "ckpt_every": 2,
+ "log_every": 1, "max_new_tokens": 8,
+ "data": {"synthetic": true, "rir_engine": "fallback_ism", "rir_sec": 0.5, "n_rooms_train": 4, "n_rooms_val": 2,
+          "num_workers": 0, "m_weights": [1.0, 1.0, 1.0, 1.0]}}

@@ -233,6 +233,50 @@ def normalize_segments(rows: Sequence[Mapping[str, Any]], duration: float) -> li
     return sorted(result, key=lambda row: row["start_time"])
 
 
+_MOSS_SEGMENT = re.compile(r"\[(\d+(?:\.\d+)?)\]\s*\[(S\d+)\](.*?)\[(\d+(?:\.\d+)?)\](?=\s*\[|\s*$)", re.S)
+
+
+def moss_resync_rows(raw: str) -> list[dict[str, Any]]:
+    """Every complete ``[start][Sxx]text[end]`` segment of a MOSS transcript.
+
+    The official stream parser reads one bracket at a time and never
+    resynchronises: when the model leaves out a speaker tag (seen as a first
+    segment ``[0.96]text[2.40]``), it reads the next end time as a start and the
+    following start time as a speaker, and every later segment is lost.  This
+    scan finds the same complete segments wherever they are.  A segment without
+    a speaker tag cannot be attributed and is left out, as the official parser
+    leaves it out.
+
+    >>> [r["speaker_id"] for r in moss_resync_rows("[0.96]Paul[2.40][3.36][S01] In both[8.88][8.88][S02] still.[10.72]")]
+    ['S01', 'S02']
+    """
+    return [{"start_time": float(a), "end_time": float(b), "speaker_id": s, "text": t.strip()}
+            for a, s, t, b in _MOSS_SEGMENT.findall(raw) if float(b) >= float(a)]
+
+
+def complete_json_objects(text: str) -> str | None:
+    """The complete objects at the head of a JSON array that was cut off, as a JSON array.
+
+    >>> complete_json_objects('[{"Start": 0, "End": 1}, {"Start": 1, "En')
+    '[{"Start": 0, "End": 1}]'
+    """
+    start = text.find("[")
+    if start < 0:
+        return None
+    decoder, position, objects = json.JSONDecoder(), start + 1, []
+    while True:
+        while position < len(text) and text[position] in " \t\r\n,":
+            position += 1
+        try:
+            value, position = decoder.raw_decode(text, position)
+        except ValueError:
+            break
+        if not isinstance(value, dict):
+            break
+        objects.append(value)
+    return json.dumps(objects) if objects else None
+
+
 class DiarizingModel:
     """Lazy adapters for official Nemotron, VibeVoice and MOSS inference APIs."""
 
@@ -268,11 +312,18 @@ class DiarizingModel:
                 local, trust_remote_code=True, dtype=self.dtype, attn_implementation="sdpa",
             ).to(device).eval()
 
-    def infer(self, mono: np.ndarray, wav_path: Path) -> tuple[list[dict[str, Any]], str]:
-        """Return native speaker segments and raw text without access to ground truth."""
+    def infer(self, mono: np.ndarray, wav_path: Path) -> tuple[list[dict[str, Any]], str, str | None]:
+        """Native speaker segments, raw text and an output issue, without access to ground truth.
+
+        A session whose output hit the token cap, or that no parser can read, is
+        the system's own result on that session, not a reason to stop the run:
+        it keeps the complete segments it has (none if nothing parses), so the
+        scorer counts what it missed, and ``issue`` names what happened
+        (``truncated``, ``unparseable``, ``resynced``) for the report.
+        """
         import torch
 
-        raw = ""
+        raw, issue = "", None
         with torch.inference_mode():
             if self.name == "nemotron":
                 inputs = self.processor(mono, sampling_rate=spec.SAMPLE_RATE_HZ).to(self.device)
@@ -289,12 +340,17 @@ class DiarizingModel:
                                              pad_token_id=self.processor.pad_id,
                                              eos_token_id=self.processor.tokenizer.eos_token_id)
                 generated = output[0, inputs["input_ids"].shape[1]:]
-                if len(generated) >= self.max_new_tokens and generated[-1].item() != self.processor.tokenizer.eos_token_id:
-                    raise RuntimeError("VibeVoice output truncated; increase --max-new-tokens")
+                truncated = (len(generated) >= self.max_new_tokens
+                             and generated[-1].item() != self.processor.tokenizer.eos_token_id)
                 raw = self.processor.decode(generated, skip_special_tokens=True)
                 rows = self.processor.post_process_transcription(raw)
-                if raw.strip() and raw.strip() != "[]" and not rows:
-                    raise ValueError(f"VibeVoice produced no parseable segments: {raw[:300]}")
+                if truncated:
+                    issue = "truncated"
+                    if not rows:  # the JSON array was cut off: keep its complete segments
+                        head = complete_json_objects(raw)
+                        rows = self.processor.post_process_transcription(head) if head else []
+                elif raw.strip() and raw.strip() != "[]" and not rows:
+                    issue = "unparseable"
             else:
                 from moss_transcribe_diarize import parse_transcript
                 from moss_transcribe_diarize.inference_utils import build_transcription_messages, generate_transcription
@@ -304,14 +360,17 @@ class DiarizingModel:
                     max_new_tokens=self.max_new_tokens, do_sample=False, device=torch.device(self.device),
                     dtype=self.dtype,
                 )
-                if response["generated_tokens"] >= self.max_new_tokens:
-                    raise RuntimeError("MOSS output may be truncated; increase --max-new-tokens")
                 raw = response["text"]
                 rows = [{"start_time": s.start, "end_time": s.end, "speaker_id": s.speaker, "text": s.text}
                         for s in parse_transcript(raw)]
-                if raw.strip() and not rows:
-                    raise ValueError(f"MOSS produced no parseable segments: {raw[:300]}")
-        return normalize_segments(rows, len(mono) / spec.SAMPLE_RATE_HZ), raw
+                resynced = moss_resync_rows(raw)
+                if len(resynced) > len(rows):
+                    rows, issue = resynced, "resynced"
+                if response["generated_tokens"] >= self.max_new_tokens:
+                    issue = "truncated"
+                elif raw.strip() and not rows:
+                    issue = "unparseable"
+        return normalize_segments(rows, len(mono) / spec.SAMPLE_RATE_HZ), raw, issue
 
 
 def fill_requests(requests: Sequence[Path], data_root: Path, cache_root: Path, device: str) -> int:
@@ -407,11 +466,12 @@ def run_diarization(name: str, jobs_path: Path, out: Path, data_root: Path,
             mono = read_mono(source, job["channel"])
             sf.write(wav, mono, spec.SAMPLE_RATE_HZ, subtype="PCM_16")
             start = time.monotonic()
-            segments, raw = model.infer(mono, wav)
-            append_row(out, {**job, "segments": segments, "raw_text": raw,
+            segments, raw, issue = model.infer(mono, wav)
+            append_row(out, {**job, "segments": segments, "raw_text": raw, "output_issue": issue,
                              "runtime": runtime,
                              "sec_per_session": time.monotonic() - start})
-            print(f"{name} {index}/{len(pending)} sessions", flush=True)
+            print(f"{name} {index}/{len(pending)} sessions" + (f" ({issue}: {len(segments)} segments kept)"
+                                                                 if issue else ""), flush=True)
     return 0
 
 

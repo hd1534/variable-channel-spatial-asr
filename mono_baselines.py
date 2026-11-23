@@ -20,7 +20,8 @@ import spec
 import track_b
 import transcripts as tr
 from modern_asr import (CODE_REVISIONS, MODEL_SPECS, QWEN_BACKEND, VIBE_TOKENIZER_REVISION, atomic_json,
-                        audio_path, cache_path, file_hash, fingerprint, jsonl_rows, normalize_segments)
+                        audio_path, cache_path, file_hash, fingerprint, jsonl_rows, moss_resync_rows,
+                        normalize_segments)
 
 REPO: Path = Path(__file__).resolve().parent
 PROTOCOL: int = 1
@@ -111,7 +112,18 @@ def run(backend: str, python: str, qwen_python: str | None, data_root: Path, out
         if row["contract"] != job["contract"]:
             raise ValueError(f"worker returned mismatched contract for {job['job_id']}")
         normalize_segments(row["segments"], spec.SESSION_LENGTH_SEC)
+        if backend == "moss":
+            # Rows written before the resync scan existed get the same rule from their raw text.
+            resynced = normalize_segments(moss_resync_rows(row.get("raw_text", "")), spec.SESSION_LENGTH_SEC)
+            if len(resynced) > len(row["segments"]):
+                row = {**row, "segments": resynced, "output_issue": row.get("output_issue") or "resynced"}
         rows.append(row)
+    issues: dict[str, int] = {}
+    for row in rows:
+        if row.get("output_issue"):
+            issues[row["output_issue"]] = issues.get(row["output_issue"], 0) + 1
+    if issues:
+        print(f"[{backend}] sessions with output issues (scored with the segments they kept): {issues}", flush=True)
     if backend == "nemotron":
         rows = attach_qwen(rows, data_root, out, cache_root, str(qwen_python), device)
     segments_path = out / "segments.jsonl"
@@ -125,6 +137,7 @@ def run(backend: str, python: str, qwen_python: str | None, data_root: Path, out
                           "latency_sec": spec.SESSION_LENGTH_SEC, "latency_kind": "audio_buffer_excluding_compute",
                           "asr": QWEN_BACKEND if backend == "nemotron" else "@".join(MODEL_SPECS[backend]),
                           "speaker_policy": "top2-duration-fold-v1", "limit": limit,
+                          "output_issues": {"sessions": len(rows), **issues},
                           "contracts_sha256": fingerprint([job["contract"] for job in jobs])}
     report["runtime"] = json.loads(raw_path.with_suffix(".runtime.json").read_text())
     if backend == "nemotron":

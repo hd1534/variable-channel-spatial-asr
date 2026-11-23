@@ -8,6 +8,7 @@
 |---|---|---|
 | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hd1534/variable-channel-spatial-asr/blob/main/notebooks/train_template.ipynb) `train_template.ipynb` | 학습·검증: 비교군 3종의 임계값, 제안 모델 3종의 학습과 최고 체크포인트 (`CONFIG="all"`) | GPU (T4 가능, A100 권장) |
 | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hd1534/variable-channel-spatial-asr/blob/main/notebooks/benchmark.ipynb) `benchmark.ipynb` | 본 평가: 학습한 시스템 6종을 두 평가셋·두 전사기로 채점하고, 최신 단일채널 비교군 3종과 Track B도 같은 채점기로 잰다 (`SYSTEMS="all"`, Track B만은 `"track_b"`) | GPU. 단일채널 비교군은 A100 |
+| [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hd1534/variable-channel-spatial-asr/blob/main/notebooks/track_c.ipynb) `track_c.ipynb` | Track C(공간 통합 ASR): 단어 정렬, 학습·검증, 본 평가 채점까지 한 노트북에서 (`full_audio` 참고 행) | GPU (A100 권장) |
 | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hd1534/variable-channel-spatial-asr/blob/main/notebooks/reproduce.ipynb) `reproduce.ipynb` | 사전 측정(단일 화자) Baseline 2 추론·채점 재현 | CPU |
 
 ## 1. 평가셋
@@ -112,5 +113,10 @@ Qwen3-ASR 자체는 화자를 구분하지 않는다. 각 시스템이 예측한
 | 제안 (드롭 없음) | Qwen3-ASR-1.7B | — | — |
 
 wav2vec2 전사 결과와 정지 조건 결과도 같은 꼴로 덧붙인다. mono 비교군과 Track B는 `full_audio` 참고 행으로 따로 둔다.
+
+**Track C(공간 통합 ASR)**: Qwen3-ASR-1.7B에 마이크 쌍 공간 어댑터·LoRA·0.25초 판정 층을 붙여, 한 모델이 화자 표시가 붙은 전사문과 시점별 화자를 함께 낸다.
+- `track_c`와 대조군 `track_c_mono`(공간 어댑터 없음)를 같은 데이터·같은 예산으로 학습해 공간의 몫을 나눠 본다.
+- 20초 전체를 보므로 `full_audio` 참고 행이다.
+- 설계는 [docs/unified-asr-design.md](docs/unified-asr-design.md)에 있다.
 
 **Track A(초경량 Conformer)**: 코드는 있고 학습 전이다. `train_template.ipynb`(`CONFIG="all_track_a"`)로 학습하고 `benchmark.ipynb`(`SYSTEMS="all_track_a"`)로 채점한다.

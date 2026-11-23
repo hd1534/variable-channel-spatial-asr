@@ -191,6 +191,58 @@ def sinusoid(n: int, d: int, device: torch.device) -> torch.Tensor:
     return pe
 
 
+def stack_frames(x: torch.Tensor, stack: int) -> torch.Tensor:
+    """``[..., T, F]`` -> ``[..., T // stack, stack * F]`` (a trailing partial group is dropped)."""
+    G = x.shape[-2] // stack
+    x = x[..., : G * stack, :]
+    return x.reshape(*x.shape[:-2], G, stack * x.shape[-1])
+
+
+class PairSpatial(nn.Module):
+    """Microphone-pair GCC-PHAT encoder shared by Track A and Track C.
+
+    Every active pair (both orderings) gives GCC-PHAT lags ``-L..L`` per STFT
+    frame plus its relative position; ``stack`` frames form one model frame;
+    one encoder per pair, TAC blocks across pairs and a masked mean make the
+    output independent of channel order and count.  With one active microphone
+    there is no pair and the output is zero.
+    """
+
+    def __init__(self, n_fft: int, hop: int, stack: int, lag: int, d: int, n_tac: int) -> None:
+        super().__init__()
+        self.n_fft, self.hop, self.stack, self.lag = n_fft, hop, stack, lag
+        self.register_buffer("window", torch.hann_window(n_fft), persistent=False)
+        self.register_buffer("pair_i", torch.tensor([p[0] for p in PAIRS]), persistent=False)
+        self.register_buffer("pair_j", torch.tensor([p[1] for p in PAIRS]), persistent=False)
+        self.pair_in = nn.Sequential(nn.Linear(stack * (2 * lag + 1) + 2, d), nn.PReLU(), nn.LayerNorm(d))
+        self.pair_tac = nn.ModuleList([TACBlock(d) for _ in range(n_tac)])
+
+    def stft(self, audio: torch.Tensor) -> torch.Tensor:
+        """``[B, C, S]`` -> complex ``[B, C, T, F]`` (unpadded, so frame ``j`` ends at ``hop*j + n_fft``)."""
+        B, C, S = audio.shape
+        with torch.autocast(device_type=audio.device.type, enabled=False):
+            X = torch.stft(audio.float().reshape(B * C, S), self.n_fft, self.hop, window=self.window,
+                           center=False, return_complex=True)
+        return X.reshape(B, C, X.shape[-2], X.shape[-1]).transpose(2, 3)
+
+    def forward(self, X: torch.Tensor, mask: torch.Tensor, mic_xy: torch.Tensor) -> torch.Tensor:
+        """``[B, G, d]`` pooled pair features."""
+        with torch.autocast(device_type=X.device.type, enabled=False):
+            cross = X[:, self.pair_i] * X[:, self.pair_j].conj()
+            phat = cross / cross.abs().clamp_min(1e-8)
+            gcc = torch.fft.irfft(phat, n=self.n_fft, dim=-1)
+            gcc = torch.cat([gcc[..., -self.lag:], gcc[..., : self.lag + 1]], dim=-1)  # lags -L..L
+            pair_mask = mask[:, self.pair_i] & mask[:, self.pair_j]  # [B, P]
+            geom = (mic_xy[:, self.pair_j].float() - mic_xy[:, self.pair_i].float()) / COORD_SCALE_M
+            g = stack_frames(gcc, self.stack)  # [B, P, G, stack * lags]
+            pair_x = torch.cat([g, geom[:, :, None].expand(-1, -1, g.shape[2], -1)], dim=-1)
+            pair_x = pair_x * pair_mask[:, :, None, None].to(pair_x.dtype)
+        x = self.pair_in(pair_x) * pair_mask[:, :, None, None].to(pair_x.dtype)
+        for block in self.pair_tac:
+            x = block(x, pair_mask)
+        return masked_channel_mean(x, pair_mask)
+
+
 class TrackA(nn.Module):
     trainable = True
     contexts = CONTEXTS
@@ -208,13 +260,8 @@ class TrackA(nn.Module):
         d = a.d_model
         frame_ms = self.hop * self.stack / SR
         self.left = max(1, int(round(a.left_context_sec / frame_ms)))
-        self.register_buffer("window", torch.hann_window(self.n_fft), persistent=False)
         self.register_buffer("mel_fb", mel_filterbank(self.n_fft, a.n_mels), persistent=False)
-        self.register_buffer("pair_i", torch.tensor([p[0] for p in PAIRS]), persistent=False)
-        self.register_buffer("pair_j", torch.tensor([p[1] for p in PAIRS]), persistent=False)
-        n_lags = 2 * self.lag + 1
-        self.pair_in = nn.Sequential(nn.Linear(self.stack * n_lags + 2, d), nn.PReLU(), nn.LayerNorm(d))
-        self.pair_tac = nn.ModuleList([TACBlock(d) for _ in range(a.n_pair_tac_blocks)])
+        self.pairs = PairSpatial(self.n_fft, self.hop, self.stack, self.lag, d, a.n_pair_tac_blocks)
         if self.use_mel:
             self.mel_in = nn.Sequential(nn.LayerNorm(self.stack * a.n_mels), nn.Linear(self.stack * a.n_mels, d),
                                         nn.PReLU())
@@ -231,40 +278,18 @@ class TrackA(nn.Module):
         self.last_gate: torch.Tensor | None = None
 
     # -- features ----------------------------------------------------------------
-    def _stack(self, x: torch.Tensor) -> torch.Tensor:
-        """``[..., T, F]`` -> ``[..., T // stack, stack * F]``."""
-        G = x.shape[-2] // self.stack
-        x = x[..., : G * self.stack, :]
-        return x.reshape(*x.shape[:-2], G, self.stack * x.shape[-1])
-
     def features(self, batch: dict) -> torch.Tensor:
         """``[B, G, d_model]`` model frames before the Conformer."""
-        audio, mask, mic_xy = batch["audio"], batch["mask"], batch["mic_xy"]
-        B, C, S = audio.shape
+        audio, mask = batch["audio"], batch["mask"]
+        X = self.pairs.stft(audio)
+        spatial = self.pairs(X, mask, batch["mic_xy"])
+        if not self.use_mel:
+            return self.fuse(spatial)
         with torch.autocast(device_type=audio.device.type, enabled=False):
-            X = torch.stft(audio.float().reshape(B * C, S), self.n_fft, self.hop, window=self.window,
-                           center=False, return_complex=True)
-            X = X.reshape(B, C, X.shape[-2], X.shape[-1]).transpose(2, 3)  # [B, C, T, F]
-            cross = X[:, self.pair_i] * X[:, self.pair_j].conj()
-            phat = cross / cross.abs().clamp_min(1e-8)
-            gcc = torch.fft.irfft(phat, n=self.n_fft, dim=-1)
-            gcc = torch.cat([gcc[..., -self.lag:], gcc[..., : self.lag + 1]], dim=-1)  # lags -L..L
-            pair_mask = mask[:, self.pair_i] & mask[:, self.pair_j]  # [B, P]
-            geom = (mic_xy[:, self.pair_j].float() - mic_xy[:, self.pair_i].float()) / COORD_SCALE_M
-            g = self._stack(gcc)  # [B, P, G, stack * lags]
-            pair_x = torch.cat([g, geom[:, :, None].expand(-1, -1, g.shape[2], -1)], dim=-1)
-            pair_x = pair_x * pair_mask[:, :, None, None].to(pair_x.dtype)
-            mel = None
-            if self.use_mel:
-                ref = reference_channel(mask)
-                power = X[torch.arange(B, device=X.device), ref].abs().pow(2)  # [B, T, F]
-                mel = self._stack(torch.log(power @ self.mel_fb.T + 1e-6))
-        x = self.pair_in(pair_x) * pair_mask[:, :, None, None].to(pair_x.dtype)
-        for block in self.pair_tac:
-            x = block(x, pair_mask)
-        spatial = masked_channel_mean(x, pair_mask)  # [B, G, d]; zero with no pair (M = 1)
-        parts = [spatial] if mel is None else [self.mel_in(mel), spatial]
-        return self.fuse(torch.cat(parts, dim=-1))
+            ref = reference_channel(mask)
+            power = X[torch.arange(X.shape[0], device=X.device), ref].abs().pow(2)  # [B, T, F]
+            mel = stack_frames(torch.log(power @ self.mel_fb.T + 1e-6), self.stack)
+        return self.fuse(torch.cat([self.mel_in(mel), spatial], dim=-1))
 
     # -- model ---------------------------------------------------------------------
     def embed(self, batch: dict, cache: dict | None = None) -> torch.Tensor:  # noqa: ARG002 - no cached cue

@@ -24,9 +24,13 @@ PROFILES: dict[str, list[str]] = {
                   + CODE_REVISIONS["vibevoice"].split("@")[1] + ".zip", "soundfile==0.13.1"],
     "moss": ["https://github.com/OpenMOSS/MOSS-Transcribe-Diarize/archive/"
              + CODE_REVISIONS["moss"].split("@")[1] + ".zip", "soundfile==0.13.1"],
+    # Track C: the shared transcriber's runtime plus LoRA, for training (trackc/).
+    "trackc": ["qwen-asr==0.0.6", "soundfile==0.13.1", "peft==0.17.1"],
 }
 IMPORT_CHECKS: dict[str, str] = {
     "qwen": "from qwen_asr import Qwen3ASRModel",
+    "trackc": "from qwen_asr import Qwen3ASRModel; from qwen_asr.inference.qwen3_forced_aligner import Qwen3ForcedAligner; "
+              "import peft",
     "nemotron": "from transformers import AutoModelForAudioFrameClassification, NemotronAsrStreamingFeatureExtractor; "
                 "NemotronAsrStreamingFeatureExtractor()",
     "vibevoice": "from vibevoice.modular.modeling_vibevoice_asr import VibeVoiceASRForConditionalGeneration; "

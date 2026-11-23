@@ -256,13 +256,13 @@ class TestOfficialAdapters(unittest.TestCase):
         adapter.processor = Mock(return_value=Batch(input_values=torch.zeros(1, 16000)))
         adapter.processor.extract_speaker_dict.return_value = [[{"Start": 0, "End": 1, "Speaker": 2}]]
         adapter.model = Mock(return_value=types.SimpleNamespace(logits=torch.zeros(1, 10, 8)))
-        segments, raw = adapter.infer(np.zeros(16000, dtype=np.float32), Path("unused.wav"))
+        segments, raw, issue = adapter.infer(np.zeros(16000, dtype=np.float32), Path("unused.wav"))
         self.assertEqual(segments, [{"start_time": 0.0, "end_time": 1.0, "speaker_id": 2, "text": ""}])
-        self.assertEqual(raw, "")
+        self.assertEqual((raw, issue), ("", None))
         adapter.processor.extract_speaker_dict.assert_called_once()
 
-    def test_vibevoice_parse_failure_is_not_successful_silence(self) -> None:
-        """A nonempty unparseable output raises before the result is cached."""
+    def test_vibevoice_bad_output_is_scored_with_what_it_kept(self) -> None:
+        """Unparseable or capped output is recorded with its issue and kept segments, never raised."""
         import torch
 
         adapter = object.__new__(modern.DiarizingModel)
@@ -274,16 +274,23 @@ class TestOfficialAdapters(unittest.TestCase):
         adapter.processor.post_process_transcription.return_value = []
         adapter.model = Mock()
         adapter.model.generate.return_value = torch.tensor([[1, 2, 3, 9]])
-        with self.assertRaisesRegex(ValueError, "no parseable segments"):
-            adapter.infer(np.zeros(16000, dtype=np.float32), Path("mono.wav"))
+        wav, mono = Path("mono.wav"), np.zeros(16000, dtype=np.float32)
+        self.assertEqual(adapter.infer(mono, wav), ([], "invalid structured output", "unparseable"))
         adapter.processor.decode.return_value = "[]"
-        self.assertEqual(adapter.infer(np.zeros(16000, dtype=np.float32), Path("mono.wav")), ([], "[]"))
+        self.assertEqual(adapter.infer(mono, wav), ([], "[]", None))
+        # Capped mid-array: the official parser sees broken JSON; the complete head objects are kept.
+        cut = '[{"Start": 0, "End": 0.5, "Speaker": 0, "Content": "hi"}, {"Start": 0.6, "En'
+        adapter.processor.decode.return_value = cut
+        adapter.processor.post_process_transcription.side_effect = lambda text: (
+            [{"start_time": 0, "end_time": 0.5, "speaker_id": 0, "text": "hi"}] if text.endswith("}]") else [])
         adapter.model.generate.return_value = torch.tensor([[1, 2] + [3] * 10])
-        with self.assertRaisesRegex(RuntimeError, "truncated"):
-            adapter.infer(np.zeros(16000, dtype=np.float32), Path("mono.wav"))
+        segments, raw, issue = adapter.infer(mono, wav)
+        self.assertEqual((issue, raw, [s["text"] for s in segments]), ("truncated", cut, ["hi"]))
+        adapter.processor.post_process_transcription.assert_called_with(
+            '[{"Start": 0, "End": 0.5, "Speaker": 0, "Content": "hi"}]')
 
-    def test_moss_parser_and_truncation(self) -> None:
-        """MOSS structured objects normalize correctly and capped output is rejected."""
+    def test_moss_parser_resync_and_truncation(self) -> None:
+        """Official segments are kept; a desynchronised parse is recovered; capped output is flagged."""
         import torch
 
         adapter = object.__new__(modern.DiarizingModel)
@@ -294,14 +301,25 @@ class TestOfficialAdapters(unittest.TestCase):
         package = types.SimpleNamespace(parse_transcript=parser)
         utilities = types.SimpleNamespace(build_transcription_messages=Mock(return_value=[{"audio": "mono.wav"}]),
                                           generate_transcription=generate)
+        wav, mono = Path("mono.wav"), np.zeros(16000 * 20, dtype=np.float32)
         with patch.dict("sys.modules", {"moss_transcribe_diarize": package,
                                         "moss_transcribe_diarize.inference_utils": utilities}):
-            segments, raw = adapter.infer(np.zeros(16000, dtype=np.float32), Path("mono.wav"))
-            self.assertEqual(segments[0]["text"], "hello")
-            self.assertEqual(raw, "structured")
-            generate.return_value["generated_tokens"] = 10
-            with self.assertRaisesRegex(RuntimeError, "truncated"):
-                adapter.infer(np.zeros(16000, dtype=np.float32), Path("mono.wav"))
+            segments, raw, issue = adapter.infer(mono, wav)
+            self.assertEqual((segments[0]["text"], raw, issue), ("hello", "structured", None))
+            # The output seen on Colab: no speaker tag on the first segment, official parser finds nothing.
+            seen = ("[0.96]Paul and Apostle[2.40][3.36][S01] In both these high, mythical subjects,[8.88]"
+                    "[8.88][S01] is still dignified and beautiful.[10.72][12.00][S02] Not of men, and severer.[13.60]")
+            generate.return_value = {"text": seen, "generated_tokens": 4}
+            parser.return_value = []
+            segments, raw, issue = adapter.infer(mono, wav)
+            self.assertEqual(issue, "resynced")
+            self.assertEqual([(s["start_time"], s["end_time"], s["speaker_id"]) for s in segments],
+                             [(3.36, 8.88, "S01"), (8.88, 10.72, "S01"), (12.0, 13.6, "S02")])
+            self.assertEqual(segments[2]["text"], "Not of men, and severer.")
+            generate.return_value = {"text": "no brackets at all", "generated_tokens": 4}
+            self.assertEqual(adapter.infer(mono, wav), ([], "no brackets at all", "unparseable"))
+            generate.return_value = {"text": seen, "generated_tokens": 10}
+            self.assertEqual(adapter.infer(mono, wav)[2], "truncated")
 
 
 @unittest.skipUnless(HAS_AUDIO, "audio integration requires soundfile")
@@ -354,13 +372,13 @@ class TestMonoIntegration(unittest.TestCase):
             job_index = iter([j for j in source_jobs if j["job_id"] not in
                               {r["job_id"] for r in modern.jsonl_rows(out, repair_tail=True)}])
 
-            def predict(waveform: np.ndarray, wav_path: Path) -> tuple[list[dict[str, Any]], str]:
+            def predict(waveform: np.ndarray, wav_path: Path) -> tuple[list[dict[str, Any]], str, None]:
                 """Return the next fixture's oracle regions through the real mono worker."""
                 job = next(job_index)
                 self.assertEqual(waveform.ndim, 1)
                 self.assertTrue(wav_path.exists())
                 source = modern.audio_path(self.data, job["set"], job["session_id"])
-                return self.oracle_segments(source, text=name != "nemotron"), "fixture"
+                return self.oracle_segments(source, text=name != "nemotron"), "fixture", None
 
             model.infer.side_effect = predict
             with patch.object(modern, "DiarizingModel", return_value=model), \
@@ -392,6 +410,27 @@ class TestMonoIntegration(unittest.TestCase):
                     self.assertEqual(report[set_name]["all"]["speaker_attribution_accuracy"], 1.0)
                     self.assertEqual(report[set_name]["all"]["cpwer"], 0.0)
                     self.assertEqual(set(report[set_name]["by_comparison_M"]), {"1", "2", "3", "4"})
+
+    def test_moss_rows_from_the_official_parser_are_resynced_when_scored(self) -> None:
+        """Rows written before the resync scan are reparsed from raw text and counted as output issues."""
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory) / "moss"
+            with patch.object(mono, "run_command", side_effect=self.worker):
+                mono.run("moss", "worker", None, self.data, out, Path(directory) / "asr", ["eval-t2"], "cpu", 2, 2048)
+                native = out / "native_segments.jsonl"
+                rows = modern.jsonl_rows(native)
+                for row in rows:  # what the official parser kept from a transcript with an untagged first segment
+                    names: dict[Any, str] = {}
+                    tagged = "".join(f"[{s['start_time']:.3f}][S{names.setdefault(s['speaker_id'], str(len(names) + 1).zfill(2))}]"
+                                     f"{s['text']}[{s['end_time']:.3f}]" for s in row["segments"])
+                    row.update(segments=[], raw_text="[0.000]untagged words[0.100]" + tagged)
+                    row.pop("output_issue", None)
+                native.write_text("".join(json.dumps(row) + "\n" for row in rows))
+                report = mono.run("moss", "worker", None, self.data, out, Path(directory) / "asr",
+                                  ["eval-t2"], "cpu", 2, 2048)
+            self.assertEqual(report["baseline"]["output_issues"], {"sessions": 4, "resynced": 4})
+            self.assertEqual(report["eval-t2"]["all"]["speaker_attribution_accuracy"], 1.0)
+            self.assertEqual(report["eval-t2"]["all"]["cpwer"], 0.0)
 
     def test_nemotron_uses_shared_qwen_cache_and_preserves_regions(self) -> None:
         """The pipeline transcribes mono slot runs and scores original diarization regions."""
@@ -432,14 +471,14 @@ class TestMonoIntegration(unittest.TestCase):
             jobs_path.write_text("".join(json.dumps(job) + "\n" for job in jobs))
             model = Mock()
             regions = self.oracle_segments(modern.audio_path(self.data, "eval-t2", jobs[0]["session_id"]), text=True)
-            model.infer.side_effect = [(regions, "ok"), RuntimeError("interrupted")]
+            model.infer.side_effect = [(regions, "ok", None), RuntimeError("interrupted")]
             with patch.object(modern, "runtime_contract", return_value={"fixture": "moss"}), \
                  patch.object(modern, "DiarizingModel", return_value=model):
                 with self.assertRaisesRegex(RuntimeError, "interrupted"):
                     modern.run_diarization("moss", jobs_path, out, self.data, "cpu", 2048)
             first = out.read_bytes()
             self.assertEqual(len(modern.jsonl_rows(out)), 1)
-            model.infer.side_effect = [(regions, "ok")]
+            model.infer.side_effect = [(regions, "ok", None)]
             model.infer.reset_mock()
             with patch.object(modern, "runtime_contract", return_value={"fixture": "moss"}), \
                  patch.object(modern, "DiarizingModel", return_value=model):

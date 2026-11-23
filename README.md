@@ -6,6 +6,7 @@
 |---|---|---|
 | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hd1534/variable-channel-spatial-asr/blob/main/notebooks/train_template.ipynb) [`train_template.ipynb`](notebooks/train_template.ipynb) | 학습·검증: 비교군 3종의 임계값과 제안 모델 3종의 학습, 최고 체크포인트 선택 (`CONFIG="all"`) | GPU (T4 가능, A100 권장) |
 | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hd1534/variable-channel-spatial-asr/blob/main/notebooks/benchmark.ipynb) [`benchmark.ipynb`](notebooks/benchmark.ipynb) | 본 평가: 학습한 시스템 6종을 두 평가셋에서 Qwen3-ASR-1.7B·wav2vec2로 채점하고, 최신 단일채널 비교군(Nemotron, VibeVoice, MOSS)과 Track B(`SYSTEMS="track_b"`)도 같은 채점기로 잰다 (`SYSTEMS="all"`) | GPU. 단일채널 비교군은 A100 |
+| [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hd1534/variable-channel-spatial-asr/blob/main/notebooks/track_c.ipynb) [`track_c.ipynb`](notebooks/track_c.ipynb) | Track C(공간 통합 ASR): Qwen3-ASR-1.7B + 마이크 쌍 공간 어댑터 + LoRA. 단어 정렬, 학습·검증, 본 평가 채점을 한 노트북에서 ([설계](docs/unified-asr-design.md)) | GPU (A100 권장) |
 | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hd1534/variable-channel-spatial-asr/blob/main/notebooks/reproduce.ipynb) [`reproduce.ipynb`](notebooks/reproduce.ipynb) | 사전 측정(단일 화자) Baseline 2 추론·채점 재현 | CPU |
 
 GPU 노트북은 개인 Drive 인증(`DRIVE_AUTH`)이 필요하다. [개인 Drive 설정 가이드](docs/personal-drive.md)를 먼저 따른다.
@@ -225,6 +226,7 @@ Drive의 크기·MD5 확인 후 완료 기록을 게시한다. 복원 시 SHA-25
 백업 오류는 작업에 전달하고, 명령·마지막 셀은 백업 완료까지 기다린다.
 완료 표시는 마지막 셀의 `개인 Drive 최종 백업 완료` 줄이다. 그 앞의 로그에는 새로 올린 파일이 있으면
 `[storage] backup complete: N files (commit …)`, 없으면 `[storage] backup up to date`가 나온다.
+120초마다 도는 주기 백업은 진행 기록(`metrics.jsonl`)만 바뀌었으면 줄을 찍지 않고, 30분마다 `[storage] N progress-only backups …`로 묶어 알린다. 체크포인트처럼 다른 파일이 바뀌면 `changed:` 뒤에 그 파일을 적는다.
 **갑작스러운 VM 종료 시 마지막 완료 백업 이후 작업은 유실될 수 있다.**
 5TB Drive가 Colab VM의 로컬 디스크 용량을 늘려 주지는 않는다.
 
@@ -351,8 +353,10 @@ VibeVoice/MOSS는 각각 같은 이름의 환경을 만든 뒤 `--backend`와 `-
 `--qwen-python`은 Nemotron에만 필요하다. 모델·공식 소스 revision은 `modern_asr.py`에 고정하고,
 출력에 오디오 SHA-256, 디코딩 설정, 실제 패키지 버전·정밀도·입력 채널·관측 범위를 기록한다.
 이들이 바뀌면 다른 출력/캐시 경로를 사용한다(노트북의 `RUN_TAG`, `ASR_CACHE_NAME`). 같은 파일에는 한 실행만 기록해야 한다.
-중단된 마지막 JSONL 조각은 복구하지만, 정상 줄의 손상과 파싱 실패는 중단시킨다.
-VibeVoice/MOSS의 파싱 오류나 토큰 상한에 도달한 출력을 완료로 캐시하지 않는다. 라이브러리 목록은 각 venv의
+중단된 마지막 JSONL 조각은 복구하지만, 정상 줄의 손상은 중단시킨다.
+VibeVoice/MOSS가 토큰 상한에 닿았거나 공식 파서가 읽지 못한 출력을 낸 세션은 그 세션의 결과로 기록하고, 읽을 수 있는 완전한 구간만 채점한다.
+MOSS의 공식 파서는 화자 태그가 빠진 구간 하나 뒤로 동기를 잃으므로, 완전한 `[시작][Sxx]텍스트[끝]` 구간을 다시 찾는다.
+이런 세션 수는 `score.json`의 `baseline.output_issues`에 남는다. 라이브러리 목록은 각 venv의
 `resolved-requirements.txt`와 mono 노트북의 Drive `mono_baselines/runtimes/`에 남는다.
 노트북의 가중치 캐시는 Drive `models/asr/`에 보존한다. CLI에서는 `VCSASR_MODEL_CACHE`로 같은 경로를 지정할 수 있다.
 비교 표의 case hash와 표본 수가 같아야 같은 평가 집단이다. 시험 실행과 전체 실행을 직접 비교하지 않는다.
@@ -631,6 +635,7 @@ tests/test_baselines.py      베이스라인 대표점 규칙 단위 테스트 (
 tests/test_eval_t2.py        본 평가셋 생성기 테스트 (가짜 음성, 7개 테스트)
 tests/test_training.py       학습 코드 불변식 테스트 (torch 필요, 없으면 건너뛴다)
 tests/test_track_a.py        Track A 인과성·채널 순서 불변·두 모드 학습, 기존 실행 지문 고정, 스모크 학습
+tests/test_track_c.py        Track C 화자 표시·격자 판정, 단어 정렬 세션, 작은 무작위 Qwen3-ASR로 모델·학습 경로 (모델 부분은 Qwen venv에서만)
 tests/test_training_fixes.py 새 코드로 끝난 실행 재검증, 학습률 일정 기록, 뱅크 버전 보존, 실행 디렉터리 잠금 회귀 테스트
 tests/test_review_regressions.py  학습·평가 잡음 일치, best.pt 프로토콜 이전, ASR별 평가 결과 재사용 회귀 테스트
 models/                      화자 구분 시스템: voice_only · space_only · naive_fusion · proposed(TAC + ECAPA + GRU),
@@ -659,6 +664,9 @@ tests/test_modern_asr.py     모델 API 어댑터·캐시 무결성·합성 오�
 notebooks/reproduce.ipynb    Baseline 2 추론·채점을 무료 CPU 런타임에서 재현하는 Colab 노트북
 notebooks/train_template.ipynb  화자 구분 시스템을 Colab GPU 에서 학습·검증하는 템플릿 노트북 (CONFIG 하나만 바꾼다)
 notebooks/benchmark.ipynb    본 평가 노트북: 학습한 시스템 6종과 최신 단일채널 비교군 3종(Track B 포함)을 같은 채점기로 채점
+notebooks/track_c.ipynb      Track C 노트북: 단어 정렬 → 학습·검증 → 본 평가 채점 (full_audio)
+trackc/                      Track C 코드: 화자 표시 텍스트(text.py), 단어 정렬 세션(scenes.py), 정렬기(align.py),
+                             통합 모델(model.py), 학습·검증·채점(train.py). 설정은 configs/trackc/
 tools_make_demo_audio.py     웹페이지 6.2절 데모 오디오(단일 채널 · 정답 방위로 조향한 4채널)를 자르는 스크립트
 docs/index.html              GitHub Pages 배포용 벤치마크 웹페이지 (제출 HTML과 동일 본)
 docs/personal-drive.md       개인 Drive OAuth 설정, 복원·여러 런타임·가져오기·내보내기 가이드
