@@ -451,6 +451,13 @@ class TestRobustness(unittest.TestCase):
             run_nf = Run(cfg_nf, Path(tmp) / "nf", Path(tmp) / "data", device="cpu", log=lambda *_: None)
             self.assertEqual(run_nf._tune_fusion_weights([dict(case)], cap=4)["best_by_M"]["4"], 0.0)
             self.assertEqual(run_nf._tune_fusion_weights([dict(case)], cap=2)["best_by_M"]["4"], 1.0)
+            # One microphone: the same case would pick w=1 on its spatial part, but the weight
+            # stays 0 (no direction at M = 1); the curve still records what w=1 would have scored.
+            one = {**dict(case), "M": 1, "mask": "1000"}
+            res1 = run_nf._tune_fusion_weights([one], cap=2)
+            self.assertEqual(res1["best_by_M"]["1"], 0.0)
+            self.assertEqual(res1["best_acc_by_M"]["1"], res1["spk_acc_by_M"]["1"][0])
+            self.assertGreater(res1["spk_acc_by_M"]["1"][1], res1["spk_acc_by_M"]["1"][0])
             # Pad to 80 frames for official_speaker_check inside validate(quick=False)
             pad = 80 - len(labels)
             case80 = {
@@ -574,6 +581,15 @@ class TestRobustness(unittest.TestCase):
                 eval_t2.load_system_inputs(ns)
             with self.assertRaises(SystemExit):
                 eval_t2.summary_settings(old, "naive_fusion", "full")
+
+            # A summary tuned before the one-microphone rule: fixed_gate's M = 1 weight is read
+            # as 0 with the full model's M = 1 threshold (the fused embedding is then [0, v]).
+            pre_rule = {"val_protocol_version": VAL_PROTOCOL_VERSION,
+                        "theta_official_by_M": {"1": 0.13, "2": 0.13},
+                        "diagnostics": {"fixed_gate_theta_official_by_M": {"1": 0.19, "2": 0.18},
+                                        "fixed_gate_weight_by_M": {"1": 0.3, "2": 0.4}}}
+            self.assertEqual(eval_t2.summary_settings(pre_rule, "proposed", "fixed_gate"),
+                             ({1: 0.13, 2: 0.18}, {1: 0.0, 2: 0.4}))
 
             # (2) trained rung: an old best.pt without the protocol version is neither complete nor resumed as best
             p_dir = Path(tmp) / "p"

@@ -826,7 +826,11 @@ class Run:
                 tuned = tune_theta(group, thetas, cap, emb_key="emb_w")
                 curve.append(tuned["acc"])
                 thetas_m.append(tuned["theta"])
-            idx = int(np.argmax(curve))
+            # One microphone carries no direction, so the weight stays 0 there (the
+            # proposed gate's rule).  The curve is kept: under ``carry`` the spatial
+            # state still varies with time in the session and a nonzero weight would
+            # score higher on that non-spatial cue, which is what the curve shows.
+            idx = int(np.argmax(curve)) if M >= 2 else int(np.flatnonzero(weights == 0.0)[0])
             chosen[M] = float(weights[idx])
             chosen_theta[M] = float(thetas_m[idx])
             best_acc[M] = round(float(curve[idx]), 4)

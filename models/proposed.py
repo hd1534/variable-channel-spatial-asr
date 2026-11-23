@@ -12,8 +12,13 @@ Spatial branch
     final validation re-runs every session with all talkers at one position
     (``Run._proposed_diagnostics``), where a branch that learned no voice
     separates nobody.  With one active channel every input is constant
-    (phase 0, ILD 0, offset 0) and the branch carries no information, exactly
-    as physics says it should.
+    (phase 0, ILD 0, offset 0), so the branch carries no *direction*.  Under
+    ``carry`` its output still changes with time in the session (the GRU runs
+    over the whole recording), and because turns are contiguous, time alone
+    separates talkers: validation measured position accuracy 0.9975 at M = 1
+    for carry against 0.46 for reset.  That cue is not spatial, so every spatial
+    weight -- the gate below and the fixed-gate / naive-fusion weights tuned in
+    ``training/engine.py`` -- is held at zero for one channel.
     Shared-weight TAC blocks then mix the channels and a masked mean pools them,
     so the same weights take any M and any channel order.
 

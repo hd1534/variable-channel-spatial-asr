@@ -363,8 +363,16 @@ def summary_settings(summary: dict[str, Any], name: str, variant: str) -> tuple[
     if theta is None:
         raise SystemExit(f"summary.json has no thresholds for {name}/{variant}: it predates them; rerun train.py on "
                          "the run directory (a finished run is revalidated on the current code without --allow-code-change)")
-    return ({int(m): float(t) for m, t in theta.items()},
-            {int(m): float(w) for m, w in weight.items()} if weight is not None else None)
+    theta_by_M = {int(m): float(t) for m, t in theta.items()}
+    weight_by_M = {int(m): float(w) for m, w in weight.items()} if weight is not None else None
+    if variant == "fixed_gate" and weight_by_M and weight_by_M.get(1, 0.0) != 0.0:
+        # Summaries written before the one-microphone rule tuned a nonzero weight at
+        # M = 1, which reads carry's time-in-session cue, not direction.  At weight 0
+        # the fused embedding is [0, v], exactly the full model's at M = 1 (its gate
+        # is 0 there), so the full model's threshold is the matching one.
+        weight_by_M[1] = 0.0
+        theta_by_M[1] = float(summary["theta_official_by_M"]["1"])
+    return theta_by_M, weight_by_M
 
 
 def tune_on_eval(emb: dict[str, np.ndarray], key: str, fuse_with: str | None, M: np.ndarray,
