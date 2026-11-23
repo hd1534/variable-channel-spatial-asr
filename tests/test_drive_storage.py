@@ -56,7 +56,7 @@ class MemoryTransport:
             raise storage.StorageError("committed backup manifest is missing")
         return json.loads(self.objects["commits/" + name])
 
-    def upload(self, local: Path, relative: str) -> str:
+    def upload(self, local: Path, relative: str, sha256: str | None = None) -> str:
         """Store bytes or simulate a dropped connection before publication."""
         if self.fail_next:
             self.fail_next = False
@@ -122,20 +122,20 @@ class TestSnapshots(StoreCase):
     """Exercise interrupted uploads, restore integrity and application dependencies."""
 
     def test_round_trip_models_symlinks_and_secret_exclusion(self) -> None:
-        """HF model links survive while tokens and temporary writes never leave the VM."""
+        """Model links survive while tokens and temporary writes never leave the VM."""
         self.put("runs/model/config.json", b'{"setting":1}')
-        self.put("models/asr/blobs/model", b"weights")
-        link = self.root / "models/asr/snapshots/rev/weights.bin"
+        self.put("models/ecapa/blobs/model", b"weights")
+        link = self.root / "models/ecapa/snapshots/rev/weights.bin"
         link.parent.mkdir(parents=True)
         link.symlink_to("../../blobs/model")
         for path in ("token.json", "private/drive-auth.json", "private/rclone.conf", "runs/run/best.pt.tmp",
-                     "models/asr/.locks/file.lock", "runs/run/.train.lock"):
+                     "models/ecapa/.locks/file.lock", "runs/run/.train.lock"):
             self.put(path, b"SECRET")
         self.store.backup()
         destination = self.restore_copy()
         self.assertEqual((destination / "runs/model/config.json").read_bytes(), b'{"setting":1}')
-        self.assertTrue((destination / "models/asr/snapshots/rev/weights.bin").is_symlink())
-        self.assertEqual((destination / "models/asr/snapshots/rev/weights.bin").read_bytes(), b"weights")
+        self.assertTrue((destination / "models/ecapa/snapshots/rev/weights.bin").is_symlink())
+        self.assertEqual((destination / "models/ecapa/snapshots/rev/weights.bin").read_bytes(), b"weights")
         self.assertFalse(any(b"SECRET" in data for data in self.remote.objects.values()))
 
     def test_failed_upload_does_not_publish_or_replace_previous_backup(self) -> None:
@@ -443,11 +443,11 @@ class TestSnapshots(StoreCase):
         self.put("result.txt", b"done")
         original = self.remote.upload
 
-        def background_failure(local: Path, relative: str) -> str:
+        def background_failure(local: Path, relative: str, sha256: str | None = None) -> str:
             """Fail only transfers started by the periodic backup thread."""
             if threading.current_thread().name == "vcsasr-backup":
                 raise storage.StorageError("simulated upload failure")
-            return original(local, relative)
+            return original(local, relative, sha256)
 
         session = storage.StorageSession(self.store, interval_sec=0.05)
         try:
@@ -606,7 +606,7 @@ class TestHistories(StoreCase):
         self.put("eval/draft/score.json", b'{"v":"draft"}')
         upload = self.remote.upload
 
-        def stored_then_lost(local: Path, relative: str) -> str:
+        def stored_then_lost(local: Path, relative: str, sha256: str | None = None) -> str:
             ref = upload(local, relative)
             if relative.startswith("commits/"):
                 raise storage.StorageError("reply lost after Drive stored the file")
@@ -1029,23 +1029,57 @@ class TestHistories(StoreCase):
         self.assertEqual((self.root / "runs/r/config.json").read_bytes(), b'{"v":')
 
     def test_restore_skip_keeps_large_files_in_the_backup_without_downloading_them(self) -> None:
-        """A training VM does not download another notebook's model weights, and never deletes them."""
-        self.put("models/asr/models--microsoft--VibeVoice-ASR/blobs/w", b"17 GB of weights")
+        """A skipping VM does not download a folder, and its backups never delete it."""
+        self.put("models/ecapa/big.bin", b"large weights")
         self.put("runs/train/best.pt", b"weights")
         self.store.backup()
-        skip = storage.model_cache_dirs(["microsoft/VibeVoice-ASR"])
-        self.assertIn("models/asr/models--microsoft--VibeVoice-ASR", skip)
-        train = self.runtime("train-vm", skip=skip)
-        self.assertFalse((train.root / "models/asr/models--microsoft--VibeVoice-ASR").exists())
-        self.put("models/asr/models--microsoft--VibeVoice-ASR/blobs/w2", b"more weights")
+        train = self.runtime("train-vm", skip=["models/ecapa"])
+        self.assertFalse((train.root / "models/ecapa").exists())
+        self.put("models/ecapa/more.bin", b"more weights")
         self.store.backup()
         self.put("runs/train/best.pt", b"newer", root=train.root)
         train.sync()
-        self.assertFalse((train.root / "models/asr/models--microsoft--VibeVoice-ASR").exists())
+        self.assertFalse((train.root / "models/ecapa").exists())
         fresh = self.restore_copy("fresh-vm")
-        self.assertTrue((fresh / "models/asr/models--microsoft--VibeVoice-ASR/blobs/w").exists())
-        self.assertTrue((fresh / "models/asr/models--microsoft--VibeVoice-ASR/blobs/w2").exists())
+        self.assertTrue((fresh / "models/ecapa/big.bin").exists())
+        self.assertTrue((fresh / "models/ecapa/more.bin").exists())
         self.assertEqual((fresh / "runs/train/best.pt").read_bytes(), b"newer")
+
+    def test_public_model_weights_are_never_backed_up_and_old_entries_are_kept(self) -> None:
+        """Hub weights are re-downloaded, not uploaded; what an older backup holds stays restorable."""
+        self.assertIn("models/asr/models--microsoft--VibeVoice-ASR", storage.model_cache_dirs(["microsoft/VibeVoice-ASR"]))
+        self.put("models/asr/models--microsoft--VibeVoice-ASR/blobs/w", b"17 GB of weights")
+        self.put("runs/train/best.pt", b"weights")
+        with patch.object(storage, "PUBLIC_WEIGHT_DIRS", ()):  # a backup written before the rule existed
+            self.store.backup()
+        self.assertIn("models/asr/models--microsoft--VibeVoice-ASR/blobs/w", self.store.files)
+        uploads = len(self.remote.uploads)
+        self.put("models/asr/models--microsoft--VibeVoice-ASR/blobs/w2", b"newly downloaded weights")
+        self.put("models/huggingface/models--facebook--wav2vec2-base-960h/blobs/x", b"wav2vec2")
+        self.put("models/ecapa/hyperparams.yaml", b"ecapa")
+        self.store.backup()
+        added = self.remote.uploads[uploads:]
+        self.assertFalse(any(b"weights" in self.remote.objects[o] or b"wav2vec2" in self.remote.objects[o]
+                             for o in added if o.startswith("objects/")))
+        self.assertIn("models/ecapa/hyperparams.yaml", self.store.files)
+        self.assertNotIn("models/asr/models--microsoft--VibeVoice-ASR/blobs/w2", self.store.files)
+        self.assertIn("models/asr/models--microsoft--VibeVoice-ASR/blobs/w", self.store.files)
+        fresh = self.restore_copy("fresh-vm")
+        self.assertEqual((fresh / "models/asr/models--microsoft--VibeVoice-ASR/blobs/w").read_bytes(), b"17 GB of weights")
+
+    def test_a_restore_reads_each_downloaded_file_once(self) -> None:
+        """A transport that reports the stored SHA-256 spares the restore a second pass over the bytes."""
+        self.put("runs/train/best.pt", b"weights")
+        self.store.backup()
+        download = self.remote.download
+
+        def hashing(relative: str, local: Path, ref: str | None = None) -> str:
+            download(relative, local, ref)
+            return hashlib.sha256(local.read_bytes()).hexdigest()
+
+        with patch.object(self.remote, "download", side_effect=hashing), \
+             patch.object(storage, "_hash", side_effect=AssertionError("read back")):
+            self.assertEqual((self.restore_copy() / "runs/train/best.pt").read_bytes(), b"weights")
 
     def test_insufficient_disk_space_fails_before_downloading(self) -> None:
         """A restore that cannot fit reports the disk, not a corrupted backup."""
@@ -1688,6 +1722,7 @@ class TestOfficialSdk(unittest.TestCase):
         from googleapiclient.discovery import build
         from googleapiclient.http import HttpMockSequence
 
+        self.enterContext(patch.object(api, "CHUNK_BYTES", 256 * 1024))  # Drive's smallest legal chunk keeps the fixture small
         data = b"x" * api.CHUNK_BYTES + b"end"
         metadata = {"id": "large-id", "size": str(len(data)), "md5Checksum": hashlib.md5(data).hexdigest()}
         http = HttpMockSequence([

@@ -26,11 +26,19 @@ from typing import Any, BinaryIO, Callable, TypeVar
 SCOPES: tuple[str, ...] = ("https://www.googleapis.com/auth/drive.file",)
 TOKEN_URI: str = "https://oauth2.googleapis.com/token"
 FOLDER_MIME: str = "application/vnd.google-apps.folder"
-FILE_FIELDS: str = "id,name,mimeType,size,md5Checksum,trashed"
+FILE_FIELDS: str = "id,name,mimeType,size,md5Checksum,sha256Checksum,trashed"
+"""Drive computes md5Checksum, sha1Checksum and sha256Checksum of every stored binary file itself
+(output-only fields; sha256 "if available").  The backup names objects by their SHA-256, so Drive's
+sha256Checksum verifies an object without the client reading the file again."""
 # <parents>--<id>.json: "root", or one or more parent commit IDs joined by "+" (a merge).
 COMMIT_NAME: re.Pattern[str] = re.compile(r"(?:root|[0-9a-f]{32}(?:\+[0-9a-f]{32})*)--[0-9a-f]{32}\.json")
 DRIVE_ID: re.Pattern[str] = re.compile(r"[A-Za-z0-9_-]+")
-CHUNK_BYTES: int = 8 * 1024 * 1024
+CHUNK_BYTES: int = 1024 * 1024 * 1024
+"""Bytes per resumable-upload chunk and per ranged download request (1 GiB, a
+multiple of the 256 KiB Drive requires).  Every chunk is a separate HTTP request
+with its own round trip, so small chunks throttle the multi-GB files this backup
+moves -- 8 MB chunks restored at a few MB/s on Colab.  A failed chunk is resent
+alone (network errors are rare), and the cost is one chunk of memory per transfer."""
 RETRY_DELAYS: tuple[int, ...] = (1, 2, 4, 8, 16, 32, 60, 60)  # about 3 minutes before a backup fails
 TOKEN_GRANT_ERRORS: frozenset[str] = frozenset({
     "invalid_request", "invalid_client", "invalid_grant", "unauthorized_client", "unsupported_grant_type",
@@ -477,22 +485,36 @@ class GoogleDriveTransport:
             raise StorageError("backup manifest checksum mismatch")
         return json.loads(data)
 
-    def upload(self, local: Path, relative: str) -> str:
+    def upload(self, local: Path, relative: str, sha256: str | None = None) -> str:
         """Store one immutable file unless it exists; return the Drive ID of the verified file.
 
         A new file counts as stored only after the resumable upload finished and
-        Drive's size and MD5 match the local bytes; an existing one only when its
-        size and MD5 match.
+        Drive's checksum matches the local bytes; an existing one only when its
+        checksum matches.  With ``sha256`` (the caller already hashed the bytes)
+        Drive's own ``sha256Checksum`` is compared and the file is not read again;
+        only when Drive reports none is the local file read once for its MD5.
         """
         folder = self._folder(relative.rpartition("/")[0], create=True)
         try:
-            size, digest = file_checksums(local)
-        except OSError as error:  # the file vanished or the disk failed before anything was sent
+            # Fail as a local error before any request: a missing, denied or unreadable file, or a directory.
+            with local.open("rb") as handle:
+                handle.read(1)
+                size = os.fstat(handle.fileno()).st_size
+        except OSError as error:
             raise local_read_error(relative, local, error) from error
         entry = self._lookup(relative)
         if entry is None:
             entry = self._send(local, relative, folder)
-        if int(entry.get("size", -1)) != size or entry.get("md5Checksum") != digest:
+        remote_sha = str(entry.get("sha256Checksum") or "").lower()
+        if sha256 and remote_sha:
+            matches = int(entry.get("size", -1)) == size and remote_sha == sha256.lower()
+        else:
+            try:
+                size, digest = file_checksums(local)
+            except OSError as error:
+                raise local_read_error(relative, local, error) from error
+            matches = int(entry.get("size", -1)) == size and entry.get("md5Checksum") == digest
+        if not matches:
             raise StorageError(f"uploaded Drive object checksum mismatch: {relative}")
         self.files[relative] = entry
         return entry["id"]
@@ -520,8 +542,12 @@ class GoogleDriveTransport:
                     raise api_error(error) from None
         return execute(self.service.files().get(fileId=identifier, fields=FILE_FIELDS))
 
-    def download(self, relative: str, local: Path, ref: str | None = None) -> None:
+    def download(self, relative: str, local: Path, ref: str | None = None) -> str | None:
         """Stream one committed file into the caller's staging file and verify Drive's size and MD5.
+
+        The MD5 is computed while the bytes are written, so the file is never read
+        back.  Returns Drive's ``sha256Checksum`` of the same content (``None`` when
+        Drive reports none): the bytes on disk match Drive's, so that is their SHA-256.
 
         ``ref`` is the Drive ID upload() returned. The file is then read by ID,
         so a file Drive has not indexed for searches yet is still found; without
@@ -533,6 +559,7 @@ class GoogleDriveTransport:
         sink = self._receive(self.service.files().get_media(fileId=entry["id"]), local, relative)
         if int(entry.get("size", -1)) != sink.size or entry.get("md5Checksum") != sink.md5.hexdigest():
             raise StorageError(f"downloaded Drive object checksum mismatch: {relative}")
+        return str(entry.get("sha256Checksum") or "").lower() or None
 
     def _receive(self, request: Any, local: Path, relative: str) -> DownloadSink:
         """Write every chunk through a hashing sink; only transport failures are retried."""

@@ -140,13 +140,23 @@ VM이 초기화되어 업로드 세션을 잃으면 마지막 완료 백업을 �
 
 `RESTORE_SKIP`은 복원·동기화 때 그 런타임의 VM으로 내려받지 않을 경로 접두어 목록이다.
 건너뛴 파일은 받지 않을 뿐 백업에서 지워지지 않고, 그 런타임의 백업 뒤에도 그대로 남는다.
-노트북을 그대로 두면 다음 기본값을 쓴다. 가중치 경로는 `drive_storage.model_cache_dirs`가
-`models/asr/models--<기관>--<모델>`과 `models/huggingface/models--<기관>--<모델>`로 만든다.
+노트북을 그대로 두면 다음 기본값을 쓴다.
 
 | 노트북 | 기본 `RESTORE_SKIP` |
 |---|---|
-| `train_template.ipynb` | 본 평가 결과(`eval`, `mono_baselines`), 전사 캐시(`asr_cache`), 전사기·단일채널 비교군 가중치: Qwen3-ASR-1.7B, wav2vec2, Nemotron, VibeVoice, MOSS, VibeVoice 토크나이저 `Qwen/Qwen2.5-7B` |
-| `benchmark.ipynb` | `cache`, `rirbanks`, 학습 재개용 체크포인트 `runs/<실행>/ckpt`, 고르지 않은 시스템만 쓰는 가중치. 우리 시스템을 고르지 않으면 `runs`, `models/ecapa`도 |
+| `train_template.ipynb` | 본 평가 결과(`eval`, `mono_baselines`), 전사 캐시(`asr_cache`), 공개 모델 가중치(`models/asr`, `models/huggingface`) |
+| `benchmark.ipynb` | `cache`, `rirbanks`, 학습 재개용 체크포인트 `runs/<실행>/ckpt`, 공개 모델 가중치(`models/asr`, `models/huggingface`). 우리 시스템을 고르지 않으면 `runs`, `models/ecapa`도 |
+
+공개 모델 가중치는 revision을 고정했으므로 Hugging Face에서 다시 받아도 같은 파일이다.
+그래서 `models/asr`와 `models/huggingface`는 **백업하지도 복원하지도 않는다**(`drive_storage.PUBLIC_WEIGHT_DIRS`).
+- 새로 받은 가중치는 Drive에 올리지 않는다.
+- 이 규칙 전에 백업에 들어간 가중치는 기록에 그대로 남는다. `RESTORE_SKIP = []`로 연결하면 그 파일은 받을 수 있다.
+
+전송은 요청 하나에 1 GiB씩 오간다(`drive_api.CHUNK_BYTES`). 처음에는 8 MB였는데, 요청마다 왕복 시간이 붙어서 Colab에서 큰 파일 복원이 초당 수 MB에 그쳤다.
+Drive는 저장한 파일마다 MD5·SHA-1·SHA-256을 직접 계산해 둔다. 백업 객체 이름이 내용의 SHA-256이라서 이 값으로 확인하면 파일을 다시 읽지 않아도 된다.
+- 업로드: 바뀐 파일을 찾을 때 이미 계산한 SHA-256을 Drive의 `sha256Checksum`과 비교한다.
+- 다운로드: 받으면서 MD5를 계산해 Drive 값과 맞춰 보고, SHA-256은 Drive가 보고한 값으로 확인한다.
+- Drive가 SHA-256을 보고하지 않을 때만 로컬에서 파일을 한 번 더 읽어 확인한다.
 
 다른 목록이 필요하면 연결 셀 전에 `RESTORE_SKIP`에 경로 접두어 목록을 넣는다. 빈 목록(`[]`)이면 모두 받는다.
 

@@ -75,7 +75,8 @@ class MemoryDrive:
                                "parents": [parent] if parent else []}
         if not folder:
             data = content or b""
-            row.update(size=str(len(data)), md5Checksum=hashlib.md5(data).hexdigest())
+            row.update(size=str(len(data)), md5Checksum=hashlib.md5(data).hexdigest(),
+                       sha256Checksum=hashlib.sha256(data).hexdigest())
         self.rows[identifier] = row
         return row
 
@@ -142,6 +143,41 @@ def memory_transport() -> tuple[api.GoogleDriveTransport, MemoryDrive]:
     service = Mock()
     service.files.return_value = MemoryFiles(drive)
     return api.GoogleDriveTransport("project", lambda: service), drive
+
+
+class TestDriveChecksums(unittest.TestCase):
+    """Drive's own SHA-256 verifies an object, so the client never reads the file a second time."""
+
+    def test_upload_with_a_known_sha256_does_not_reread_the_file(self) -> None:
+        data = b"weights"
+        digest = hashlib.sha256(data).hexdigest()
+        transport, drive = memory_transport()
+        drive.add("objects", "objects", "project", folder=True)
+        drive.add("existing", "blob", "objects", data)
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "blob"
+            source.write_bytes(data)
+            with patch.object(api, "file_checksums", side_effect=AssertionError("file read again")):
+                self.assertEqual(transport.upload(source, "objects/blob", sha256=digest), "existing")
+            transport.files.clear()
+            with self.assertRaisesRegex(api.StorageError, "checksum mismatch"):
+                transport.upload(source, "objects/blob", sha256="0" * 64)
+
+    def test_upload_falls_back_to_md5_when_drive_reports_no_sha256(self) -> None:
+        data = b"weights"
+        transport, drive = memory_transport()
+        drive.add("objects", "objects", "project", folder=True)
+        drive.add("existing", "blob", "objects", data).pop("sha256Checksum")
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "blob"
+            source.write_bytes(data)
+            with patch.object(api, "file_checksums", wraps=api.file_checksums) as checksums:
+                self.assertEqual(transport.upload(source, "objects/blob", sha256=hashlib.sha256(data).hexdigest()),
+                                 "existing")
+            checksums.assert_called_once()
+
+    def test_fields_ask_drive_for_its_sha256(self) -> None:
+        self.assertIn("sha256Checksum", api.FILE_FIELDS.split(","))
 
 
 class TestDuplicates(unittest.TestCase):
@@ -558,10 +594,14 @@ class TestSdkTransfers(unittest.TestCase):
         real_open = Path.open
 
         def bad_sector(path: Path, *args: Any, **kwargs: Any) -> Any:
-            """Open the source as a file whose reads fail."""
+            """Open the source as a file whose first byte reads but whose chunk reads fail."""
             handle = real_open(path, *args, **kwargs)
             if path == source:
-                handle.read = Mock(side_effect=OSError(errno.EIO, "Input/output error"))  # type: ignore[method-assign]
+                def read(n: int = -1) -> bytes:
+                    if n == 1:  # the pre-upload probe passes; the failure comes mid-transfer
+                        return b"0"
+                    raise OSError(errno.EIO, "Input/output error")
+                handle.read = read  # type: ignore[method-assign]
             return handle
 
         with patch.object(api, "file_checksums", return_value=(10, hashlib.md5(b"0123456789").hexdigest())), \

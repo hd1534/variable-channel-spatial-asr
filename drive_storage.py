@@ -45,6 +45,10 @@ COMMIT_NAME: re.Pattern[str] = re.compile(r"(root|[0-9a-f]{32}(?:\+[0-9a-f]{32})
 SHA256: re.Pattern[str] = re.compile(r"[0-9a-f]{64}\Z")
 SECRET_NAMES: frozenset[str] = frozenset({"rclone.conf", "token.json", "credentials.json", "client_secret.json", "drive-auth.json"})
 STATIC_DIRS: frozenset[str] = frozenset({"models", "cache"})
+PUBLIC_WEIGHT_DIRS: tuple[str, ...] = ("models/asr", "models/huggingface")
+"""Hugging Face caches of public weights pinned to a revision (Qwen3-ASR, wav2vec2, Nemotron, VibeVoice,
+MOSS, ...).  The Hub serves the same files far faster than a Drive round trip, so a workspace never backs
+them up; entries an older backup already holds are carried forward unchanged, never re-read or deleted."""
 # Result folders are merged as a unit so a run's checkpoints, summary and scores always come from one history.
 GROUP_DEPTH: tuple[tuple[str, int], ...] = (("mono_baselines/runtimes/", 3), ("models/", 3))
 # A transcript cache folder (<ASR_CACHE_NAME>/<backend>.jsonl, <backend>.inputs.json, qwen-runtime.json) is one unit.
@@ -103,6 +107,11 @@ def _object(digest: str) -> str:
     if not isinstance(digest, str) or not SHA256.fullmatch(digest):
         raise StorageError("invalid content digest")
     return f"objects/{digest[:2]}/{digest}"
+
+
+def _public_weights(relative: str) -> bool:
+    """Whether a path is a public model cache that is never backed up (:data:`PUBLIC_WEIGHT_DIRS`)."""
+    return any(relative == d or relative.startswith(d + "/") for d in PUBLIC_WEIGHT_DIRS)
 
 
 def _static(relative: str) -> bool:
@@ -257,12 +266,14 @@ class BackupTransport(Protocol):
         """Read one published manifest."""
         ...
 
-    def upload(self, local: Path, relative: str) -> str | None:
-        """Return only after uploaded bytes have been verified; optionally return a direct reference."""
+    def upload(self, local: Path, relative: str, sha256: str | None = None) -> str | None:
+        """Return only after uploaded bytes have been verified (against ``sha256`` when given); optionally
+        return a direct reference."""
         ...
 
-    def download(self, relative: str, local: Path, ref: str | None = None) -> None:
-        """Stream verified bytes into a staging destination."""
+    def download(self, relative: str, local: Path, ref: str | None = None) -> str | None:
+        """Stream verified bytes into a staging destination; optionally return their SHA-256 as the
+        storage service reports it."""
         ...
 
 
@@ -774,7 +785,7 @@ class SnapshotStore:
         """Upload new content once and remember the transport reference."""
         digest = entry["sha256"]
         if digest not in self.uploaded:
-            ref = self.transport.upload(blob, _object(digest))
+            ref = self.transport.upload(blob, _object(digest), sha256=digest)  # already hashed: Drive verifies
             self.uploaded.add(digest)
             if isinstance(ref, str):
                 self.refs[digest] = ref
@@ -792,15 +803,18 @@ class SnapshotStore:
         """Write and verify one file version at a staging path."""
         target.parent.mkdir(parents=True, exist_ok=True)
         target.unlink(missing_ok=True)
+        streamed: str | None = None
         if entry["sha256"] in synthesized:
             target.write_bytes(synthesized[entry["sha256"]])
         else:
             self.log(f"[storage] restoring {relative} ({entry['size'] / 1e6:.1f} MB)")
             if entry.get("ref"):
-                self.transport.download(_object(entry["sha256"]), target, ref=entry["ref"])
+                streamed = self.transport.download(_object(entry["sha256"]), target, ref=entry["ref"])
             else:
-                self.transport.download(_object(entry["sha256"]), target)
-        if target.stat().st_size != entry["size"] or _hash(target) != entry["sha256"]:
+                streamed = self.transport.download(_object(entry["sha256"]), target)
+        # Drive's own SHA-256 of bytes whose MD5 was checked while writing spares reading a multi-GB file back.
+        digest = streamed if isinstance(streamed, str) else _hash(target)
+        if target.stat().st_size != entry["size"] or digest != entry["sha256"]:
             target.unlink(missing_ok=True)
             raise StorageError(f"backup checksum mismatch: {relative}; live files were not changed")
         os.utime(target, ns=(entry["mtime_ns"], entry["mtime_ns"]))
@@ -1177,7 +1191,7 @@ class SnapshotStore:
         candidate: dict[str, dict[str, Any]] = {}
         local: dict[str, dict[str, Any]] = {}
         for relative, entry in self.files.items():
-            unscanned = not include_static and _static(relative)
+            unscanned = (not include_static and _static(relative)) or _public_weights(relative)
             path = self.root / relative
             if unscanned or (relative not in self.local and not path.exists() and not path.is_symlink()):
                 candidate[relative] = entry  # a large cache outside this pass, or a file not kept locally
@@ -1186,7 +1200,7 @@ class SnapshotStore:
         captured: dict[str, str] = {}
         for path in sorted(self.root.rglob("*")) if self.root.exists() else []:
             relative = path.relative_to(self.root).as_posix()
-            if _excluded(relative) or (not include_static and _static(relative)):
+            if _excluded(relative) or _public_weights(relative) or (not include_static and _static(relative)):
                 continue
             record = self.local.get(relative)
             if path.is_symlink():
